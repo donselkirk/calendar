@@ -15,6 +15,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.security.MessageDigest;
@@ -147,7 +148,7 @@ final class UpdateManager {
     SharedPreferences prefs = prefs(context);
     if (prefs.getInt("versionCode", 0) <= BuildConfig.VERSION_CODE) return;
     state(context, "downloading", "");
-    File directory = new File(context.getFilesDir(), "update");
+    File directory = new File(context.getCacheDir(), "update");
     if (!directory.exists() && !directory.mkdirs()) {
       state(context, "error", "Could not create update staging directory");
       return;
@@ -192,16 +193,65 @@ final class UpdateManager {
   private static void stageAndInstall(Context context, File apk) throws Exception {
     String data = context.getApplicationInfo().dataDir;
     String source = context.getApplicationInfo().sourceDir;
-    String recovery = "/data/local/tmp/homehq-recovery";
+    String recovery = "/data/local/tmp/homehq-recovery/" + BuildConfig.VERSION_CODE;
     String staged = "/data/local/tmp/homehq-update.apk";
-    String command = "set -e; mkdir -p " + q(recovery) + "; cp " + q(source) + " " + q(recovery + "/previous.apk")
-        + "; cp " + q(apk.getAbsolutePath()) + " " + q(staged)
-        + "; rm -rf " + q(new File(context.getFilesDir(), "update").getAbsolutePath())
-        + "; tar -C " + q(data) + " -czf " + q(recovery + "/data.tgz") + " files shared_prefs app_webview 2>/dev/null"
-        + "; pm install -r " + q(staged) + "; rm -f " + q(staged);
+    runRoot("set -e; mkdir -p " + q(recovery) + "; cp " + q(source) + " " + q(recovery + "/previous.apk"));
+    streamArchiveToRoot(data, recovery + "/data.tar");
+    streamFileToRoot(apk, staged);
+    if (!apk.delete()) throw new IllegalStateException("Could not clear private APK staging");
+    File parent = apk.getParentFile();
+    if (parent != null) parent.delete();
+    runRoot("set -e; pm install -r " + q(staged) + "; rm -f " + q(staged));
+  }
+
+  static String[] archiveCommand(String data) {
+    return new String[] {"tar", "-C", data, "-cf", "-", "files", "shared_prefs", "app_webview"};
+  }
+
+  static void copy(InputStream input, OutputStream output) throws Exception {
+    byte[] buffer = new byte[16_384];
+    int size;
+    while ((size = input.read(buffer)) != -1) output.write(buffer, 0, size);
+    output.flush();
+  }
+
+  private static void streamArchiveToRoot(String data, String target) throws Exception {
+    Process archive = Runtime.getRuntime().exec(archiveCommand(data));
+    Process sink = rootSink(target);
+    OutputStream output = sink.getOutputStream();
+    try { copy(archive.getInputStream(), output); }
+    finally { output.close(); }
+    int archiveResult = archive.waitFor();
+    int sinkResult = sink.waitFor();
+    if (archiveResult != 0 || sinkResult != 0) {
+      throw new IllegalStateException("Data export failed (tar=" + archiveResult + ", root=" + sinkResult + ")");
+    }
+  }
+
+  private static void streamFileToRoot(File source, String target) throws Exception {
+    Process sink = rootSink(target);
+    FileInputStream input = new FileInputStream(source);
+    OutputStream output = sink.getOutputStream();
+    try { copy(input, output); }
+    finally {
+      input.close();
+      output.close();
+    }
+    int result = sink.waitFor();
+    if (result != 0) throw new IllegalStateException("Root staging failed " + result);
+  }
+
+  private static Process rootSink(String target) throws Exception {
+    String partial = target + ".part";
+    String command = "set -e; rm -f " + q(partial) + "; cat > " + q(partial)
+        + "; sync; mv " + q(partial) + " " + q(target);
+    return Runtime.getRuntime().exec(new String[] {"su", "-c", command});
+  }
+
+  private static void runRoot(String command) throws Exception {
     Process process = Runtime.getRuntime().exec(new String[] {"su", "-c", command});
     int result = process.waitFor();
-    if (result != 0) throw new IllegalStateException("Package installer exited " + result);
+    if (result != 0) throw new IllegalStateException("Root command exited " + result);
   }
 
   private static String q(String value) { return "'" + value.replace("'", "'\\''") + "'"; }
