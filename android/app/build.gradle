@@ -1,0 +1,108 @@
+import java.util.Properties
+
+plugins {
+  id "com.android.application"
+  id "jacoco"
+}
+
+jacoco { toolVersion = "0.8.12" }
+
+def versions = new Properties()
+rootProject.file("version.properties").withInputStream { versions.load(it) }
+def releasePolicy = new Properties()
+rootProject.file("release.properties").withInputStream { releasePolicy.load(it) }
+
+android {
+  namespace "com.wesbos.homehq"
+  compileSdk 34
+
+  defaultConfig {
+    applicationId "com.wesbos.homehq"
+    minSdk 23
+    targetSdk 28
+    versionCode versions.getProperty("VERSION_CODE").toInteger()
+    versionName versions.getProperty("VERSION_NAME")
+    testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+    buildConfigField "String", "GITHUB_OWNER", '"donselkirk"'
+    buildConfigField "String", "GITHUB_REPO", '"calendar"'
+    buildConfigField "String", "SIGNING_CERT_SHA256", '"' + releasePolicy.getProperty("SIGNING_CERT_SHA256") + '"'
+  }
+
+  signingConfigs {
+    release {
+      def path = System.getenv("HOMEHQ_KEYSTORE_PATH")
+      if (path) {
+        storeFile file(path)
+        storePassword System.getenv("HOMEHQ_KEYSTORE_PASSWORD")
+        keyAlias System.getenv("HOMEHQ_KEY_ALIAS")
+        keyPassword System.getenv("HOMEHQ_KEY_PASSWORD")
+        v1SigningEnabled true
+        v2SigningEnabled true
+      }
+    }
+  }
+
+  buildTypes {
+    debug {
+      testCoverageEnabled true
+    }
+    release {
+      minifyEnabled false
+      if (System.getenv("HOMEHQ_KEYSTORE_PATH")) signingConfig signingConfigs.release
+    }
+  }
+
+  compileOptions {
+    sourceCompatibility JavaVersion.VERSION_1_8
+    targetCompatibility JavaVersion.VERSION_1_8
+  }
+
+  sourceSets.main.assets.srcDirs = ["src/main/assets", layout.buildDirectory.dir("generated/assets")]
+  testOptions.unitTests.includeAndroidResources = true
+  buildFeatures.buildConfig = true
+}
+
+dependencies {
+  testImplementation "junit:junit:4.13.2"
+  testImplementation "org.robolectric:robolectric:4.16.1"
+  testImplementation "org.json:json:20240303"
+}
+
+tasks.register("bundleWeb", Copy) {
+  doFirst {
+    if (!rootProject.file("web/dist/index.html").exists()) {
+      throw new GradleException("web/dist is missing; run pnpm --dir web build first")
+    }
+  }
+  from rootProject.file("web/dist")
+  into layout.buildDirectory.dir("generated/assets/site")
+}
+
+tasks.named("preBuild").configure { dependsOn("bundleWeb") }
+
+def nativeCoverageClasses = fileTree(layout.buildDirectory.dir("intermediates/javac/debug/compileDebugJavaWithJavac/classes")) {
+  include "com/wesbos/homehq/DisplayPolicy.class"
+  include "com/wesbos/homehq/DeviceConfig.class"
+  include "com/wesbos/homehq/UpdateManifest.class"
+}
+
+tasks.register("jacocoTestReport", JacocoReport) {
+  dependsOn "testDebugUnitTest"
+  reports { xml.required = true; html.required = true }
+  classDirectories.setFrom(nativeCoverageClasses)
+  sourceDirectories.setFrom(files("src/main/java"))
+  executionData.setFrom(fileTree(layout.buildDirectory) { include "outputs/unit_test_code_coverage/debugUnitTest/testDebugUnitTest.exec" })
+}
+
+tasks.register("jacocoTestCoverageVerification", JacocoCoverageVerification) {
+  dependsOn "jacocoTestReport"
+  classDirectories.setFrom(nativeCoverageClasses)
+  sourceDirectories.setFrom(files("src/main/java"))
+  executionData.setFrom(fileTree(layout.buildDirectory) { include "outputs/unit_test_code_coverage/debugUnitTest/testDebugUnitTest.exec" })
+  violationRules {
+    rule {
+      limit { counter = "LINE"; minimum = 0.85 }
+      limit { counter = "BRANCH"; minimum = 0.80 }
+    }
+  }
+}

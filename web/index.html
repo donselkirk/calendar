@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=1280, initial-scale=1, user-scalable=no">
+  <meta name="theme-color" content="#F2EEE6">
+  <title>Local Calendar</title>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" href="/icon-192.png">
+  <link rel="stylesheet" href="css/tokens.css">
+  <link rel="stylesheet" href="css/base.css">
+  <link rel="stylesheet" href="css/views/calendar.css">
+</head>
+<body>
+  <div class="stage" id="stage" data-mode="day">
+    <main class="views">
+      <section class="view" id="view-calendar" data-view="calendar"></section>
+    </main>
+
+    <div class="toasts" id="toasts" aria-live="polite"></div>
+    <div class="sheet-layer" id="sheetLayer"></div>
+  </div>
+
+  <script>
+    // Wall-display self-healing: if the app bundle failed to load (e.g. a stale page right after a
+    // deploy, or a network blip), reload until it starts.
+    setTimeout(function () { if (!window.App) location.reload(); }, 10000);
+  </script>
+  <script type="module" src="/js/main.js"></script>
+</body>
+</html>
