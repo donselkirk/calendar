@@ -29,7 +29,7 @@ jobs:
           distribution: temurin
           java-version: 17
           cache: gradle
-      - run: corepack enable
+      - run: corepack prepare pnpm@11.25.0 --activate
       - run: pnpm --dir web install --frozen-lockfile
       - run: pnpm --dir web exec playwright install --with-deps chromium
       - run: ./scripts/privacy-scan.sh
