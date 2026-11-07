@@ -8,7 +8,18 @@ apk="android/app/build/outputs/apk/release/app-release.apk"
 out="artifacts/release-$version"
 mkdir -p "$out"
 cp "$apk" "$out/homehq-v$version.apk"
-(cd web/dist && zip -qr "../../../$out/web-v$version.zip" .)
+python3 - "web/dist" "$out/web-v$version.zip" <<'PY'
+from pathlib import Path
+import sys
+import zipfile
+
+source = Path(sys.argv[1])
+target = Path(sys.argv[2])
+with zipfile.ZipFile(target, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+    for path in sorted(source.rglob("*")):
+        if path.is_file():
+            archive.write(path, path.relative_to(source))
+PY
 
 sha="$(sha256sum "$out/homehq-v$version.apk" | awk '{print $1}')"
 cert="$(sed -n 's/^SIGNING_CERT_SHA256=//p' release.properties | tr '[:upper:]' '[:lower:]')"
