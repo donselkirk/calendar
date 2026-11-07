@@ -48,6 +48,12 @@ jobs:
           install -d -m 700 "$RUNNER_TEMP/homehq-signing"
           printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/homehq-signing/homehq.jks"
           chmod 600 "$RUNNER_TEMP/homehq-signing/homehq.jks"
+      - name: Verify signing keystore
+        env:
+          HOMEHQ_KEYSTORE_PATH: ${{ runner.temp }}/homehq-signing/homehq.jks
+          HOMEHQ_KEYSTORE_PASSWORD: ${{ secrets.HOMEHQ_KEYSTORE_PASSWORD }}
+          HOMEHQ_KEY_ALIAS: ${{ secrets.HOMEHQ_KEY_ALIAS }}
+        run: ./scripts/verify-keystore.sh
       - name: Build signed APK and tests
         env:
           HOMEHQ_KEYSTORE_PATH: ${{ runner.temp }}/homehq-signing/homehq.jks
