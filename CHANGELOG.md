@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.11.1 - 2026-11-07
+
+- Stage updater backups and APKs through app-owned streams so self-updates work on frames where root cannot traverse app-private storage.
+- Keep a versioned, atomic recovery archive before package replacement.
+
 ## 1.11.0 - 2026-11-07
 
 - Move the customized calendar to a reproducible Gradle and GitHub release workflow.
