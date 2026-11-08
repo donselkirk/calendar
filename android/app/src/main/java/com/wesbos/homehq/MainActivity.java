@@ -215,12 +215,15 @@ public class MainActivity extends Activity {
 
       @Override
       public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
-        Uri uri = request.getUrl();
-        if (request.isForMainFrame() && isLocalPath(uri, UPDATE_UI_PATH)) {
-          handler.post(() -> UpdateManager.showDialog(MainActivity.this));
-          return true;
-        }
-        return false;
+        return handleUpdateNavigation(request.getUrl(), request.isForMainFrame());
+      }
+
+      // Android 6 WebView calls this legacy overload for main-frame navigations. Keep it alongside
+      // the request overload above so the update badge opens its native dialog on the frame.
+      @SuppressWarnings("deprecation")
+      @Override
+      public boolean shouldOverrideUrlLoading(WebView view, String url) {
+        return handleUpdateNavigation(Uri.parse(url), true);
       }
 
       @Override
@@ -331,6 +334,24 @@ public class MainActivity extends Activity {
     registerReceiver(networkChange, connectivity);
     UpdateScheduler.schedule(this);
     UpdateManager.start(this, UpdateManager.ACTION_CHECK);
+  }
+
+  private boolean handleUpdateNavigation(Uri uri, boolean mainFrame) {
+    if (!isUpdateUiNavigation(uri, mainFrame)) return false;
+    handler.post(() -> UpdateManager.showDialog(MainActivity.this));
+    return true;
+  }
+
+  static boolean isUpdateUiNavigation(Uri uri, boolean mainFrame) {
+    return uri != null && isUpdateUiNavigation(mainFrame, uri.getScheme(), uri.getHost(), uri.getPort(),
+        uri.getPath(), uri.getQuery(), uri.getFragment(), uri.getUserInfo());
+  }
+
+  static boolean isUpdateUiNavigation(boolean mainFrame, String scheme, String host, int port,
+      String path, String query, String fragment, String userInfo) {
+    return mainFrame && "http".equalsIgnoreCase(scheme) && LOCAL_HOST.equals(host)
+        && port == LOCAL_PORT && UPDATE_UI_PATH.equals(path) && query == null && fragment == null
+        && userInfo == null;
   }
 
   @Override
