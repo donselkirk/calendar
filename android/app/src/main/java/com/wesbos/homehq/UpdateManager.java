@@ -201,7 +201,14 @@ final class UpdateManager {
     if (!apk.delete()) throw new IllegalStateException("Could not clear private APK staging");
     File parent = apk.getParentFile();
     if (parent != null) parent.delete();
-    runRoot("set -e; pm install -r " + q(staged) + "; rm -f " + q(staged));
+    runRoot(installCommand(staged));
+  }
+
+  static String installCommand(String staged) {
+    // This frame's SuperSU applies umask 077 to root shells. Recovery artifacts should remain
+    // private, but PackageManager runs as a different UID and must be able to read the verified APK.
+    return "set -e; chmod 0644 " + q(staged) + "; pm install -r " + q(staged)
+        + "; rm -f " + q(staged);
   }
 
   static String[] archiveCommand(String data) {

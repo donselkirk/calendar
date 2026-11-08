@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.11.4 - 2026-11-07
+
+- Make the verified temporary APK readable by Android's package manager when SuperSU applies a private root-shell umask.
+- Keep staged recovery APKs and application data private.
+
 ## 1.11.3 - 2026-11-07
 
 - Publish a metadata-only release to validate the complete in-app self-update and recovery path on the frame.
