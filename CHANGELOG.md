@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.11.6 - 2026-11-08
+
+- Enable unattended nightly installation by default now that rollback and in-app self-update validation have succeeded on the frame.
+
 ## 1.11.5 - 2026-11-07
 
 - Publish the final metadata-only release for the complete no-ADB self-update acceptance test.

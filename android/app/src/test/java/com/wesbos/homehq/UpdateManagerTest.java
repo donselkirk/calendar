@@ -2,12 +2,17 @@ package com.wesbos.homehq;
 
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import org.junit.Test;
 
 public class UpdateManagerTest {
+  @Test public void enablesValidatedNightlyUpdatesByDefault() {
+    assertTrue(UpdateManager.DEFAULT_AUTO_ENABLED);
+  }
+
   @Test public void archiveCommandUsesOnlyPersistentApplicationData() {
     assertArrayEquals(new String[] {"tar", "-C", "/data/app-data", "-cf", "-",
         "files", "shared_prefs", "app_webview"}, UpdateManager.archiveCommand("/data/app-data"));
