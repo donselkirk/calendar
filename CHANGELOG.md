@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.11.5 - 2026-11-07
+
+- Publish the final metadata-only release for the complete no-ADB self-update acceptance test.
+
 ## 1.11.4 - 2026-11-07
 
 - Make the verified temporary APK readable by Android's package manager when SuperSU applies a private root-shell umask.
