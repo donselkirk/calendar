@@ -28,6 +28,7 @@ final class UpdateManager {
   static final String ACTION_INSTALL = "com.wesbos.homehq.INSTALL_UPDATE";
   static final String ACTION_NIGHTLY = "com.wesbos.homehq.NIGHTLY_UPDATE";
   static final String PREF_AUTO_ENABLED = "auto_updates_enabled";
+  static final boolean DEFAULT_AUTO_ENABLED = true;
   static final String PREF_DEFER_TONIGHT = "defer_update_tonight";
   private static final String TAG = "HomeHQ.Update";
   private static final String PREF = "updates";
@@ -130,7 +131,7 @@ final class UpdateManager {
     SharedPreferences app = context.getSharedPreferences(MainActivity.PREFS, Context.MODE_PRIVATE);
     SharedPreferences update = prefs(context);
     boolean requested = update.getBoolean(PREF_DEFER_TONIGHT, false)
-        || update.getBoolean(PREF_AUTO_ENABLED, false);
+        || update.getBoolean(PREF_AUTO_ENABLED, DEFAULT_AUTO_ENABLED);
     long now = System.currentTimeMillis();
     long lastTouch = app.getLong(ScreenSaverController.PREF_LAST_INTERACTION, 0);
     java.util.Calendar clock = java.util.Calendar.getInstance();
