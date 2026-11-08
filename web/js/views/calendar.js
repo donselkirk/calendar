@@ -412,7 +412,7 @@
     App.sheet(
       '<div class="sheet-pad add">' +
       '<div class="label">New event</div>' +
-      '<input class="big-input serif" placeholder="What’s happening?" data-f="title">' +
+      '<input class="big-input serif" type="text" enterkeyhint="done" autocomplete="off" placeholder="What’s happening?" data-f="title">' +
       '<div class="chips">' + ideas.map(function (i) { return '<button class="chip chip--ghost" data-idea="' + i + '">' + i + '</button>'; }).join('') + '</div>' +
       '<div class="label">Calendar</div><div class="add-who"><button class="who-btn is-on" data-who="all" style="' + App.pstyle(D.family) + '">' + App.avatar(D.family, 56) + '<span>Family</span></button>' + D.people.map(function (p) {
         return '<button class="who-btn" data-who="' + p.id + '" style="' + App.pstyle(p) + '">' + App.avatar(p, 56) + '<span>' + p.name + '</span></button>';
@@ -434,6 +434,11 @@
       onMount: function (s, close) {
         var input = s.querySelector('[data-f=title]');
         var timeText = s.querySelector('[data-time-label]');
+        input.addEventListener('keydown', function (ev) {
+          if (ev.key !== 'Enter') return;
+          ev.preventDefault();
+          input.blur();
+        });
         s.addEventListener('click', function (ev) {
           var t = ev.target.closest('button');
           if (!t) return;
