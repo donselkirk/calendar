@@ -481,6 +481,15 @@
   }
 
   // ------------------------------------------------------------ clock tick
+  App.updateClock = function (clock, now) {
+    if (!clock) return;
+    var time = clock.querySelector('b');
+    var period = clock.querySelector('span');
+    if (!time || !period) return;
+    time.textContent = App.fmt.time(now, false);
+    period.textContent = App.fmt.ampm(now);
+  };
+
   var lastMin = -1, lastDateKey = null;
   function tick() {
     // Android may correct itself several seconds after our HTTP clock has already made the
@@ -500,8 +509,7 @@
     if (n.getMinutes() !== lastMin) {
       lastMin = n.getMinutes();
       if (validEpoch(n.getTime())) rememberClock(n.getTime());
-      var clock = $('#calendarClock');
-      if (clock) clock.innerHTML = '<b>' + App.fmt.time(n, false) + '</b><span>' + App.fmt.ampm(n) + '</span>';
+      App.updateClock($('#calendarClock'), n);
       App.emit('minute', n);
     }
   }

@@ -41,11 +41,16 @@ test('month calendar fits the frame and forecast returns to the calendar', async
   await expect(page.locator('.mo-grid')).toBeVisible();
 });
 
-test('arrows and a mouse swipe both slide between months', async ({ page }) => {
+test('arrows plus mouse and Android-style touch swipes slide between months', async ({ page }) => {
   const title = page.locator('.cal-title');
   const initial = await title.textContent();
   await page.locator('[data-nav="1"]').click();
   await expect(title).not.toHaveText(initial);
+  await expect(page.locator('[data-today]')).toBeVisible();
+  await page.locator('[data-today]').click();
+  await expect(title).toHaveText(initial);
+  await expect(page.locator('[data-today]')).toHaveClass(/is-hidden/);
+  await page.locator('[data-nav="1"]').click();
   const afterArrow = await title.textContent();
   const grid = page.locator('.mo-grid');
   const box = await grid.boundingBox();
@@ -54,6 +59,15 @@ test('arrows and a mouse swipe both slide between months', async ({ page }) => {
   await page.mouse.move(box.x + box.width * .25, box.y + box.height * .5, { steps: 8 });
   await page.mouse.up();
   await expect(title).not.toHaveText(afterArrow);
+  const afterMouse = await title.textContent();
+  await page.waitForTimeout(350);
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: box.x + box.width * .7, y: box.y + box.height * .5 }] });
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: box.x + box.width * .45, y: box.y + box.height * .5 }] });
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: box.x + box.width * .2, y: box.y + box.height * .5 }] });
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  await expect(title).not.toHaveText(afterMouse);
 });
 
 test('creates an all-day recurring family event with the touch controls', async ({ page }) => {

@@ -57,4 +57,13 @@ describe('calendar data model', () => {
     expect(app.fmt.time(new Date(2026, 1, 1, 13, 30))).toBe('1:30 PM');
     expect(app.repeatLabel('yearly')).toBe('Every year');
   });
+
+  it('updates the minute without deleting the calendar date and year', async () => {
+    const app = await loadApp();
+    document.body.innerHTML = '<div id="calendarClock"><div><b>4:14</b><span>PM</span></div><small>SUN · NOV 8 · 2026</small></div>';
+    app.updateClock(document.querySelector('#calendarClock'), new Date(2026, 10, 8, 16, 15));
+    expect(document.querySelector('#calendarClock b').textContent).toBe('4:15');
+    expect(document.querySelector('#calendarClock span').textContent).toBe('PM');
+    expect(document.querySelector('#calendarClock small').textContent).toBe('SUN · NOV 8 · 2026');
+  });
 });

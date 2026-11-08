@@ -6,9 +6,11 @@
 .cal-head .btn { min-height: 52px; padding: 0 20px; font-size: 15px; }
 .cal-head .seg { padding: 3px; }
 .cal-head .seg button { min-height: 46px; padding: 0 18px; font-size: 15px; }
-.cal-head-left { justify-self: start; }
+.cal-head-left { justify-self: start; display: flex; align-items: center; gap: 7px; }
 .cal-head-right { justify-self: end; display: flex; align-items: center; gap: 6px; }
-.cal-nav { grid-column: 2; display: flex; align-items: center; justify-content: center; gap: 5px; }
+.cal-nav { grid-column: 2; display: flex; align-items: center; justify-content: center; gap: 16px; }
+.cal-nav .icon-btn { border-color: transparent; border-radius: 12px; background: transparent; }
+.cal-nav .icon-btn:active { background: var(--paper-2); }
 .cal-clock { min-width: 148px; text-align: right; line-height: 1; padding: 4px 0 4px 5px; }
 .cal-clock > div { white-space: nowrap; }
 .cal-clock b { display: inline; font-size: 25px; font-weight: 800; font-variant-numeric: tabular-nums; }
@@ -35,8 +37,8 @@
   border-radius: 999px; background: #8b2f20; color: #fff; font-size: 13px; font-weight: 800;
 }
 .cal-title { min-width: 190px; text-align: center; font-size: 39px; line-height: 1; white-space: nowrap; transform: translateY(-5px); }
-.cal-today { position: absolute; left: calc(100% + 10px); }
-.cal-body { flex: 1; min-height: 0; position: relative; transition: transform 150ms ease, opacity 150ms ease; will-change: transform, opacity; }
+.cal-today { min-height: 46px !important; padding: 0 14px !important; border: 1px solid var(--line); border-radius: 14px; }
+.cal-body { flex: 1; min-height: 0; position: relative; transition: transform 150ms ease, opacity 150ms ease; will-change: transform, opacity; touch-action: pan-y; }
 .cal-body.month-leave-left { transform: translateX(-11%); opacity: 0; }
 .cal-body.month-leave-right { transform: translateX(11%); opacity: 0; }
 .cal-body.month-enter-right { animation: month-enter-right 250ms cubic-bezier(.2, .75, .25, 1); }
@@ -58,7 +60,12 @@
   --forecast-fg: #fff; --forecast-sub: rgba(255, 255, 255, .76); --forecast-line: rgba(255, 255, 255, .24);
   background: linear-gradient(135deg, #183957, #102337); color: var(--forecast-fg);
 }
-.weather-video { position: absolute; inset: 0; z-index: 0; width: 100%; height: 100%; object-fit: cover; pointer-events: none; }
+.weather-video { position: absolute; inset: 0; z-index: 0; width: 100%; height: 100%; object-fit: cover; pointer-events: none; opacity: 0; transition: opacity 500ms ease; }
+.weather-video.is-playing { opacity: 1; }
+.weather-video::-webkit-media-controls,
+.weather-video::-webkit-media-controls-panel,
+.weather-video::-webkit-media-controls-overlay-play-button,
+.weather-video::-webkit-media-controls-start-playback-button { display: none !important; opacity: 0 !important; -webkit-appearance: none; }
 .weather-rain .weather-video { width: 112%; max-width: none; }
 .weather-video-shade { position: absolute; inset: 0; z-index: 1; background: linear-gradient(90deg, rgba(0, 0, 0, .78) 0%, rgba(0, 0, 0, .59) 38%, rgba(0, 0, 0, .17) 68%, transparent 100%); }
 .forecast-today-copy { position: relative; z-index: 2; width: 54%; height: 100%; min-height: 355px; padding: 25px 30px 22px; display: flex; flex-direction: column; align-items: flex-start; }

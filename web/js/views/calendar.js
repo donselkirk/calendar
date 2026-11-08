@@ -196,11 +196,10 @@
     var t = title();
     var isToday = V.date.getMonth() === App.now().getMonth() && V.date.getFullYear() === App.now().getFullYear();
     return '<header class="cal-head">' +
-      '<div class="cal-head-left">' + App.weatherMarkup() + '</div>' +
+      '<div class="cal-head-left">' + App.weatherMarkup() + '<button class="btn btn--ghost cal-today' + (isToday ? ' is-hidden' : '') + '" data-today>Today</button></div>' +
       '<div class="cal-nav"><button class="icon-btn" data-nav="-1" aria-label="Previous month">' + App.icon('left', 26) + '</button>' +
       '<div class="cal-title serif">' + t.t + '</div>' +
-      '<button class="icon-btn" data-nav="1" aria-label="Next month">' + App.icon('right', 26) + '</button>' +
-      '<button class="btn btn--ghost cal-today' + (isToday ? ' is-hidden' : '') + '" data-today>Today</button></div>' +
+      '<button class="icon-btn" data-nav="1" aria-label="Next month">' + App.icon('right', 26) + '</button></div>' +
       '<div class="cal-head-right">' + App.updateMarkup() + '<div class="cal-clock num" id="calendarClock"></div></div>' +
       (D.configMissing ? '<div class="config-warning" role="status">Device setup required</div>' : '') +
       '</header>';
@@ -217,7 +216,7 @@
 
   function weatherVideo(scene) {
     var file = { clear: 'clear', partly: 'clear', cloud: 'cloudy', fog: 'fog', rain: 'rain', snow: 'snow', storm: 'storm' }[scene] || 'cloudy';
-    return '<video class="weather-video" autoplay muted loop playsinline aria-hidden="true"><source src="/weather/' + file + '.mp4" type="video/mp4"></video><div class="weather-video-shade" aria-hidden="true"></div>';
+    return '<video class="weather-video" autoplay muted loop playsinline webkit-playsinline preload="auto" aria-hidden="true"><source src="/weather/' + file + '.mp4" type="video/mp4"></video><div class="weather-video-shade" aria-hidden="true"></div>';
   }
 
   function forecastPage() {
@@ -266,6 +265,12 @@
     }
     if (V.page === 'forecast') {
       V.el.innerHTML = forecastPage();
+      var video = V.el.querySelector('.weather-video');
+      if (video) {
+        video.addEventListener('playing', function () { video.classList.add('is-playing'); });
+        var playback = video.play();
+        if (playback && playback.catch) playback.catch(function () {});
+      }
       return;
     }
     V.el.innerHTML = '<div class="cal cal--month">' + header() + '<div class="cal-body">' + monthView() + '</div></div>';
@@ -314,25 +319,47 @@
   // Swipe anywhere on the month grid to change months. Mouse pointers are supported for preview.
   function swipe(el) {
     var sx, sy, st;
-    el.addEventListener('pointerdown', function (e) {
-      if (V.page !== 'calendar' || e.target.closest('button')) return;
-      sx = e.clientX; sy = e.clientY; st = Date.now();
-    });
-    el.addEventListener('pointermove', function (e) {
-      if (sx == null || V.moving) return;
+    function begin(x, y, target) {
+      if (V.page !== 'calendar' || target.closest('button')) return;
+      sx = x; sy = y; st = Date.now();
+    }
+    function move(x, y) {
+      if (sx == null || V.moving) return false;
+      var dx = x - sx, dy = y - sy;
       var body = V.el.querySelector('.cal-body');
-      if (body && Math.abs(e.clientX - sx) > Math.abs(e.clientY - sy)) body.style.transform = 'translateX(' + Math.max(-90, Math.min(90, (e.clientX - sx) * .28)) + 'px)';
-    });
-    el.addEventListener('pointerup', function (e) {
+      if (body && Math.abs(dx) > Math.abs(dy)) body.style.transform = 'translateX(' + Math.max(-90, Math.min(90, dx * .28)) + 'px)';
+      return Math.abs(dx) > Math.abs(dy);
+    }
+    function end(x, y, target) {
       if (V.page !== 'calendar') { sx = null; return; }
       if (sx == null) return;
-      var dx = e.clientX - sx, dy = e.clientY - sy;
+      var dx = x - sx, dy = y - sy;
       sx = null;
       var body = V.el.querySelector('.cal-body');
       if (body) body.style.transform = '';
-      if (Math.abs(dx) > 70 && Math.abs(dy) < 75 && Date.now() - st < 900 && !e.target.closest('.cal-head')) nav(dx < 0 ? 1 : -1);
+      if (Math.abs(dx) > 70 && Math.abs(dy) < 75 && Date.now() - st < 900 && !target.closest('.cal-head')) nav(dx < 0 ? 1 : -1);
+    }
+    function cancel() { sx = null; var body = V.el.querySelector('.cal-body'); if (body) body.style.transform = ''; }
+    el.addEventListener('pointerdown', function (e) {
+      begin(e.clientX, e.clientY, e.target);
     });
-    el.addEventListener('pointercancel', function () { sx = null; var body = V.el.querySelector('.cal-body'); if (body) body.style.transform = ''; });
+    el.addEventListener('pointermove', function (e) {
+      move(e.clientX, e.clientY);
+    });
+    el.addEventListener('pointerup', function (e) {
+      end(e.clientX, e.clientY, e.target);
+    });
+    el.addEventListener('pointercancel', cancel);
+    el.addEventListener('touchstart', function (e) {
+      if (e.touches.length === 1) begin(e.touches[0].clientX, e.touches[0].clientY, e.target);
+    }, { passive: true });
+    el.addEventListener('touchmove', function (e) {
+      if (e.touches.length === 1 && move(e.touches[0].clientX, e.touches[0].clientY)) e.preventDefault();
+    }, { passive: false });
+    el.addEventListener('touchend', function (e) {
+      if (e.changedTouches.length) end(e.changedTouches[0].clientX, e.changedTouches[0].clientY, e.target);
+    });
+    el.addEventListener('touchcancel', cancel);
   }
 
   // ------------------------------------------------------------ sheets
