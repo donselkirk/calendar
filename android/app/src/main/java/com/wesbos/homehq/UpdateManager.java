@@ -73,11 +73,10 @@ final class UpdateManager {
     new AlertDialog.Builder(activity).setTitle("Update " + name + " is available")
         .setMessage(notes.isEmpty() ? "A verified Home HQ update is ready." : notes)
         .setPositiveButton("Update now", (dialog, which) -> start(activity, ACTION_INSTALL))
-        .setNeutralButton("Tonight", (dialog, which) -> {
+        .setNegativeButton("Later", (dialog, which) -> {
           prefs(activity).edit().putBoolean(PREF_DEFER_TONIGHT, true).apply();
           UpdateScheduler.scheduleNightly(activity);
-        })
-        .setNegativeButton("Later", null).show();
+        }).show();
   }
 
   static void start(Context context, String action) {

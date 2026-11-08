@@ -25,15 +25,35 @@ test.beforeEach(async ({ page }) => {
 
 test('month calendar fits the frame and forecast returns to the calendar', async ({ page }) => {
   await expect(page.locator('.mo-grid')).toBeVisible();
-  await expect(page.locator('.cal-title')).toContainText(/2026|2027/);
+  await expect(page.locator('.cal-title')).not.toContainText(/2026|2027/);
+  await expect(page.locator('.cal-clock')).toContainText(/2026|2027/);
+  await expect(page.locator('.cal-clock')).not.toHaveAttribute('data-forecast');
   const body = await page.locator('body').boundingBox();
   expect(body.width).toBe(1280);
   expect(body.height).toBe(800);
   await page.locator('[data-forecast]').first().click();
-  await expect(page.getByText('8-day forecast')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Ottawa Weather' })).toBeVisible();
+  await expect(page.locator('.weather-video')).toHaveAttribute('autoplay', '');
+  await expect(page.locator('.forecast-today-icon')).toHaveCount(0);
   await expect(page.locator('.forecast-day')).toHaveCount(7);
+  await expect(page.locator('.forecast-rain')).toHaveCount(7);
   await page.locator('[data-calendar]').click();
   await expect(page.locator('.mo-grid')).toBeVisible();
+});
+
+test('arrows and a mouse swipe both slide between months', async ({ page }) => {
+  const title = page.locator('.cal-title');
+  const initial = await title.textContent();
+  await page.locator('[data-nav="1"]').click();
+  await expect(title).not.toHaveText(initial);
+  const afterArrow = await title.textContent();
+  const grid = page.locator('.mo-grid');
+  const box = await grid.boundingBox();
+  await page.mouse.move(box.x + box.width * .7, box.y + box.height * .5);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width * .25, box.y + box.height * .5, { steps: 8 });
+  await page.mouse.up();
+  await expect(title).not.toHaveText(afterArrow);
 });
 
 test('creates an all-day recurring family event with the touch controls', async ({ page }) => {

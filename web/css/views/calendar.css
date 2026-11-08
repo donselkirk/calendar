@@ -1,82 +1,81 @@
 /* Calendar */
 .cal { height: 100%; display: flex; flex-direction: column; }
 #view-calendar { padding-top: 14px; }
-.cal-head { display: flex; align-items: center; gap: 8px; height: 52px; margin-bottom: 8px; flex: none; }
+.cal-head { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 14px; height: 58px; margin-bottom: 8px; flex: none; position: relative; }
 .cal-head .icon-btn { width: 52px; height: 52px; }
 .cal-head .btn { min-height: 52px; padding: 0 20px; font-size: 15px; }
 .cal-head .seg { padding: 3px; }
 .cal-head .seg button { min-height: 46px; padding: 0 18px; font-size: 15px; }
-.cal-clock { min-width: 118px; text-align: right; line-height: 1; padding: 4px 8px; border-radius: 14px; }
-.cal-clock:active { background: var(--paper-2); }
+.cal-head-left { justify-self: start; }
+.cal-head-right { justify-self: end; display: flex; align-items: center; gap: 6px; }
+.cal-nav { grid-column: 2; display: flex; align-items: center; justify-content: center; gap: 5px; }
+.cal-clock { min-width: 148px; text-align: right; line-height: 1; padding: 4px 0 4px 5px; }
 .cal-clock > div { white-space: nowrap; }
 .cal-clock b { display: inline; font-size: 25px; font-weight: 800; font-variant-numeric: tabular-nums; }
 .cal-clock span { margin-left: 5px; font-size: 13px; font-weight: 800; letter-spacing: .08em; color: var(--mute); }
 .cal-clock small { display: block; margin-top: 5px; color: var(--mute); font-size: 12px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
 .cal-weather {
-  min-width: 172px; height: 52px; padding: 0 10px;
+  min-width: 184px; height: 52px; padding: 0 13px;
   display: flex; align-items: center; gap: 9px;
-  border-left: 1px solid var(--line);
+  border: 1px solid var(--line); border-radius: 16px; background: rgba(255, 255, 255, .45);
 }
+.cal-weather:active { transform: scale(.97); background: var(--paper-2); }
 .cal-weather > span { display: grid; grid-template-columns: auto 1fr; align-items: center; column-gap: 8px; text-align: left; }
 .cal-weather b { grid-row: 1 / span 2; font-size: 28px; line-height: 1; }
 .cal-weather small { font-size: 12px; line-height: 1.25; color: var(--mute); white-space: nowrap; }
 .cal-weather.is-stale { opacity: .65; }
 .cal-weather.is-loading .i { opacity: .45; }
 .update-badge {
-  min-height: 42px; padding: 0 16px; margin-left: 8px; border-radius: 999px;
-  display: inline-flex; align-items: center; gap: 8px; background: #111; color: #fff;
-  font-size: 14px; font-weight: 800; white-space: nowrap;
+  width: 46px; height: 46px; padding: 0; border: 1px solid var(--line); border-radius: 14px;
+  display: inline-flex; align-items: center; justify-content: center; background: rgba(255, 255, 255, .45); color: var(--ink);
 }
 .update-badge:active { transform: scale(.96); }
 .config-warning {
   position: absolute; right: 32px; top: 88px; z-index: 4; padding: 7px 12px;
   border-radius: 999px; background: #8b2f20; color: #fff; font-size: 13px; font-weight: 800;
 }
-.cal-title { display: flex; align-items: baseline; gap: 12px; min-width: 300px; padding: 0 6px; }
-.cal-title .serif { font-size: 34px; line-height: 1; white-space: nowrap; }
-.cal-head [data-today] { margin-right: auto; }
-.cal-body { flex: 1; min-height: 0; position: relative; }
+.cal-title { min-width: 190px; text-align: center; font-size: 39px; line-height: 1; white-space: nowrap; transform: translateY(-5px); }
+.cal-today { position: absolute; left: calc(100% + 10px); }
+.cal-body { flex: 1; min-height: 0; position: relative; transition: transform 150ms ease, opacity 150ms ease; will-change: transform, opacity; }
+.cal-body.month-leave-left { transform: translateX(-11%); opacity: 0; }
+.cal-body.month-leave-right { transform: translateX(11%); opacity: 0; }
+.cal-body.month-enter-right { animation: month-enter-right 250ms cubic-bezier(.2, .75, .25, 1); }
+.cal-body.month-enter-left { animation: month-enter-left 250ms cubic-bezier(.2, .75, .25, 1); }
+@keyframes month-enter-right { from { transform: translateX(11%); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes month-enter-left { from { transform: translateX(-11%); opacity: 0; } to { transform: none; opacity: 1; } }
 
 /* ---- Ottawa forecast */
 .forecast-page { height: 100%; display: flex; flex-direction: column; gap: 14px; }
 .forecast-head { height: 64px; flex: none; display: grid; grid-template-columns: 180px 1fr 180px; align-items: center; }
-.forecast-head > div { text-align: center; }
-.forecast-head h1 { font-size: 38px; line-height: .95; margin-top: 2px; }
+.forecast-head h1 { font-size: 39px; line-height: 1; text-align: center; }
 .forecast-head .label { justify-content: center; }
 .forecast-head .btn { min-height: 52px; padding: 0 18px; }
 .forecast-head .btn:last-child { justify-self: end; }
 .forecast-today {
-  min-height: 248px; flex: none; padding: 26px 30px; border-radius: 24px;
-  display: grid; grid-template-columns: 130px 1fr 180px; grid-template-rows: 1fr auto; align-items: center; gap: 8px 24px;
+  min-height: 355px; flex: none; padding: 0; border-radius: 24px;
+  display: block;
   position: relative; isolation: isolate; overflow: hidden;
-  --forecast-fg: #fff; --forecast-sub: rgba(255, 255, 255, .72); --forecast-line: rgba(255, 255, 255, .2); --forecast-accent: #ffd166;
+  --forecast-fg: #fff; --forecast-sub: rgba(255, 255, 255, .76); --forecast-line: rgba(255, 255, 255, .24);
   background: linear-gradient(135deg, #183957, #102337); color: var(--forecast-fg);
 }
-.forecast-today > :not(.weather-scene) { position: relative; z-index: 2; }
-.forecast-today-icon { display: grid; place-items: center; color: var(--forecast-accent); }
-.forecast-today-main h2 { font-size: 64px; line-height: .95; margin: 8px 0 6px; }
-.forecast-today-main p { font-size: 20px; color: var(--forecast-sub); }
-.forecast-now { font-size: 116px; line-height: .8; text-align: right; }
-.forecast-stats { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; padding-top: 18px; border-top: 1px solid var(--forecast-line); }
+.weather-video { position: absolute; inset: 0; z-index: 0; width: 100%; height: 100%; object-fit: cover; pointer-events: none; }
+.weather-rain .weather-video { width: 112%; max-width: none; }
+.weather-video-shade { position: absolute; inset: 0; z-index: 1; background: linear-gradient(90deg, rgba(0, 0, 0, .78) 0%, rgba(0, 0, 0, .59) 38%, rgba(0, 0, 0, .17) 68%, transparent 100%); }
+.forecast-today-copy { position: relative; z-index: 2; width: 54%; height: 100%; min-height: 355px; padding: 25px 30px 22px; display: flex; flex-direction: column; align-items: flex-start; }
+.forecast-today-copy h2 { font-size: 43px; line-height: .95; margin: -2px 0 4px; }
+.forecast-today-copy p { font-size: 17px; color: var(--forecast-sub); }
+.forecast-now { font-size: 96px; line-height: .88; margin: 18px 0 5px; text-align: left; }
+.forecast-stats { width: 100%; margin-top: auto; display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; padding-top: 14px; border-top: 1px solid var(--forecast-line); }
 .forecast-stat { display: grid; grid-template-columns: 30px 1fr; align-items: center; column-gap: 8px; }
 .forecast-stat .i { grid-row: 1 / span 2; opacity: .76; }
 .forecast-stat span { font-size: 12px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--forecast-sub); }
-.forecast-stat b { font-size: 22px; }
+.forecast-stat b { font-size: 18px; }
 .forecast-today .label--light { color: var(--forecast-sub); }
 
 /* Animated current-condition scene. Shapes stay behind a translucent wash so the data remains the
    first thing the eye reads on a wall display. */
 .weather-scene { position: absolute; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; }
 .weather-scene::after { content: ''; position: absolute; inset: 0; background: linear-gradient(90deg, rgba(0, 0, 0, .06), transparent 52%, rgba(0, 0, 0, .08)); }
-.forecast-today.is-day.weather-clear { --forecast-fg: #0c3249; --forecast-sub: rgba(12, 50, 73, .72); --forecast-line: rgba(12, 50, 73, .2); --forecast-accent: #b55b00; background: linear-gradient(135deg, #91d9f5, #dff5ff); }
-.forecast-today.is-night.weather-clear { background: linear-gradient(135deg, #071527, #183a5e); --forecast-accent: #f8e7a2; }
-.forecast-today.is-day.weather-partly { --forecast-fg: #102f43; --forecast-sub: rgba(16, 47, 67, .7); --forecast-line: rgba(16, 47, 67, .19); --forecast-accent: #9f5700; background: linear-gradient(135deg, #7fc7e8, #d9edf5); }
-.forecast-today.is-night.weather-partly { background: linear-gradient(135deg, #10243a, #38536d); --forecast-accent: #f5e5ab; }
-.forecast-today.weather-cloud { --forecast-fg: #152d3b; --forecast-sub: rgba(21, 45, 59, .7); --forecast-line: rgba(21, 45, 59, .18); --forecast-accent: #526d7c; background: linear-gradient(135deg, #c9d7de, #eef3f5); }
-.forecast-today.weather-fog { --forecast-fg: #263c47; --forecast-sub: rgba(38, 60, 71, .7); --forecast-line: rgba(38, 60, 71, .18); --forecast-accent: #647b86; background: linear-gradient(135deg, #d7e0e3, #f1f4f4); }
-.forecast-today.weather-rain { background: linear-gradient(135deg, #224966, #527b91); --forecast-accent: #b9e9ff; }
-.forecast-today.weather-snow { --forecast-fg: #183246; --forecast-sub: rgba(24, 50, 70, .7); --forecast-line: rgba(24, 50, 70, .18); --forecast-accent: #477a9a; background: linear-gradient(135deg, #dcebf2, #fbfdfe); }
-.forecast-today.weather-storm { background: linear-gradient(135deg, #24283b, #575871); --forecast-accent: #ffe176; }
 
 .weather-orb { position: absolute; right: 110px; top: -48px; width: 170px; height: 170px; border-radius: 50%; opacity: 0; }
 .weather-clear.is-day .weather-orb, .weather-partly.is-day .weather-orb { opacity: .7; background: #ffe07a; box-shadow: 0 0 0 22px rgba(255, 224, 122, .13), 0 0 80px rgba(255, 217, 85, .48); animation: weather-breathe 5s ease-in-out infinite; }
@@ -114,11 +113,11 @@
 @keyframes weather-flash { 0%, 89%, 92%, 100% { opacity: 0; } 90%, 91% { opacity: .7; } }
 .forecast-next { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 8px; }
 .forecast-days { flex: 1; min-height: 0; display: grid; grid-template-columns: repeat(7, 1fr); gap: 9px; }
-.forecast-day { min-width: 0; padding: 14px 12px; border-radius: 16px; background: var(--card); display: flex; flex-direction: column; align-items: center; gap: 7px; text-align: center; }
+.forecast-day { min-width: 0; padding: 14px 12px 12px; border-radius: 16px; background: var(--card); display: flex; flex-direction: column; align-items: center; gap: 7px; text-align: center; }
 .forecast-day-date { width: 100%; display: flex; align-items: baseline; justify-content: space-between; }
 .forecast-day-date b { font-size: 15px; text-transform: uppercase; letter-spacing: .06em; color: var(--mute); }
 .forecast-day-date span { font-size: 27px; }
-.forecast-day > .i { margin: 2px 0; color: var(--ink-2); }
+.forecast-day > .i { margin: 9px 0 2px; color: var(--ink-2); }
 .forecast-day strong { min-height: 34px; display: flex; align-items: center; font-size: 15px; line-height: 1.08; }
 .forecast-day-temp { display: flex; align-items: baseline; gap: 9px; }
 .forecast-day-temp b { font-size: 27px; }
@@ -258,15 +257,15 @@
 .mo-cell { position: relative; background: var(--card); border-radius: 12px; padding: 7px 9px; display: flex; flex-direction: column; gap: 4px; min-width: 0; overflow: hidden; }
 .mo-cell .num { font-size: 30px; line-height: 1; }
 .mo-cell.is-out { opacity: .35; }
-.mo-cell.is-today { background: var(--ink); color: var(--paper); }
+.mo-cell.is-today { background: #dcefea; color: #153f39; box-shadow: inset 0 0 0 2px #55a895; }
 .mo-events { display: flex; flex-direction: column; gap: 2px; min-height: 0; }
 .mo-event { display: flex; align-items: center; gap: 5px; min-width: 0; font-size: 12px; line-height: 1.15; text-align: left; }
 .mo-event i { width: 7px; height: 7px; flex: none; border-radius: 50%; background: var(--c); }
 .mo-event span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mo-event b { font-weight: 800; }
-.mo-cell.is-today .mo-event i { box-shadow: 0 0 0 1px var(--paper); }
+.mo-cell.is-today .mo-event i { box-shadow: none; }
 .mo-more { font-size: 11px; font-weight: 800; color: var(--mute); }
-.mo-cell.is-today .mo-more { color: var(--paper); opacity: .75; }
+.mo-cell.is-today .mo-more { color: #356c64; opacity: .85; }
 
 /* Ontario's nine ESA public holidays are named in the cell, separate from personal events. */
 .mo-holiday {
@@ -275,7 +274,7 @@
 }
 .mo-holiday .holiday-icon { width: 15px; height: 15px; }
 .mo-holiday span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.mo-cell.is-today .mo-holiday { color: #ffb4b7; }
+.mo-cell.is-today .mo-holiday { color: #a12a31; }
 .holiday-icon { width: 27px; height: 27px; flex: none; color: #b3272d; display: inline-block; }
 .holiday-icon svg { width: 100%; height: 100%; display: block; }
 .holiday-list { display: flex; flex-direction: column; gap: 8px; margin: 6px 0 22px; }
@@ -298,8 +297,7 @@
 .waste-icon--garbage { color: #777; }
 .waste-icon--blue { color: #007f9b; }
 .waste-icon--black { color: #111; }
-/* Preserve the requested colours on today's black cell with a fine light outline, not a tile. */
-.mo-cell.is-today .waste-icon svg { filter: drop-shadow(0 0 1px var(--paper)) drop-shadow(0 0 1px var(--paper)); }
+.mo-cell.is-today .waste-icon svg { filter: none; }
 .waste-list { display: flex; flex-direction: column; gap: 8px; margin: 6px 0 22px; }
 .waste-list > .label { margin-bottom: 2px; }
 .waste-row {
