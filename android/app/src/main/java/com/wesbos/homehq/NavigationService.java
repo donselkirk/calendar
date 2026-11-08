@@ -1,7 +1,10 @@
 package com.wesbos.homehq;
 
 import android.accessibilityservice.AccessibilityService;
+import android.content.BroadcastReceiver;
+import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.graphics.Color;
 import android.graphics.PixelFormat;
 import android.graphics.drawable.GradientDrawable;
@@ -16,25 +19,59 @@ import android.widget.TextView;
 
 /** Optional navigation for frames whose firmware omits the Android navigation bar. */
 public class NavigationService extends AccessibilityService {
-  private static NavigationService instance;
-  private static boolean dashboardVisible;
+  private static final String ACTION_VISIBILITY = "com.wesbos.homehq.NAVIGATION_VISIBILITY";
+  private static final String ACTION_PING = "com.wesbos.homehq.NAVIGATION_PING";
+  private static final String PROCESS_PREFS = "navigation_process";
+  private static final String PREF_VISIBLE = "dashboard_visible";
+  private static final String PREF_PONG = "last_pong_elapsed";
+  private static final long PONG_FRESH_MS = 3_000;
+  private boolean dashboardVisible;
   private WindowManager windows;
   private LinearLayout bar;
   private WindowManager.LayoutParams position;
   private boolean attached;
 
-  static boolean isConnected() {
-    return instance != null;
+  static void ping(Context context) {
+    context.sendBroadcast(new Intent(ACTION_PING).setPackage(context.getPackageName()));
   }
 
-  static void setDashboardVisible(boolean visible) {
-    dashboardVisible = visible;
-    if (instance != null) instance.updateVisibility();
+  static boolean isRecentlyConnected(Context context, long nowElapsed) {
+    long pong = context.getSharedPreferences(PROCESS_PREFS, Context.MODE_MULTI_PROCESS)
+        .getLong(PREF_PONG, 0);
+    return pongIsRecent(nowElapsed, pong);
   }
+
+  static boolean pongIsRecent(long nowElapsed, long pongElapsed) {
+    return pongElapsed > 0 && nowElapsed - pongElapsed >= 0
+        && nowElapsed - pongElapsed <= PONG_FRESH_MS;
+  }
+
+  static void setDashboardVisible(Context context, boolean visible) {
+    context.getSharedPreferences(PROCESS_PREFS, Context.MODE_MULTI_PROCESS).edit()
+        .putBoolean(PREF_VISIBLE, visible).commit();
+    context.sendBroadcast(new Intent(ACTION_VISIBILITY).setPackage(context.getPackageName())
+        .putExtra(PREF_VISIBLE, visible));
+  }
+
+  private final BroadcastReceiver control = new BroadcastReceiver() {
+    @Override public void onReceive(Context context, Intent intent) {
+      if (ACTION_VISIBILITY.equals(intent.getAction())) {
+        dashboardVisible = intent.getBooleanExtra(PREF_VISIBLE, false);
+        updateVisibility();
+      } else if (ACTION_PING.equals(intent.getAction())) {
+        recordPong();
+      }
+    }
+  };
 
   @Override
   protected void onServiceConnected() {
-    instance = this;
+    dashboardVisible = getSharedPreferences(PROCESS_PREFS, MODE_MULTI_PROCESS)
+        .getBoolean(PREF_VISIBLE, false);
+    IntentFilter controls = new IntentFilter(ACTION_VISIBILITY);
+    controls.addAction(ACTION_PING);
+    registerReceiver(control, controls);
+    recordPong();
     windows = (WindowManager) getSystemService(WINDOW_SERVICE);
     bar = new LinearLayout(this);
     bar.setGravity(Gravity.CENTER_VERTICAL);
@@ -89,6 +126,11 @@ public class NavigationService extends AccessibilityService {
     updateVisibility();
   }
 
+  private void recordPong() {
+    getSharedPreferences(PROCESS_PREFS, MODE_MULTI_PROCESS).edit()
+        .putLong(PREF_PONG, android.os.SystemClock.elapsedRealtime()).commit();
+  }
+
   private void addButton(String label, View.OnClickListener click) {
     Button button = new Button(this);
     button.setText(label);
@@ -123,7 +165,7 @@ public class NavigationService extends AccessibilityService {
   @Override public void onDestroy() {
     if (attached) windows.removeView(bar);
     attached = false;
-    if (instance == this) instance = null;
+    try { unregisterReceiver(control); } catch (IllegalArgumentException ignored) { }
     super.onDestroy();
   }
 }

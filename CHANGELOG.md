@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.11.7 - 2026-11-08
+
+- Keep the floating Back and Dashboard controls alive in a dedicated process when this frame kills the dashboard process on entry to Android Settings.
+- Repair navigation-service connectivity across processes without granting access to screen content.
+- Show a Done action on the event-name keyboard and close the keyboard without losing the entered title.
+
 ## 1.11.6 - 2026-11-08
 
 - Enable unattended nightly installation by default now that rollback and in-app self-update validation have succeeded on the frame.

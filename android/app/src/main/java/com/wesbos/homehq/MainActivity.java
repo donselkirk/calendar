@@ -357,13 +357,13 @@ public class MainActivity extends Activity {
   @Override
   protected void onResume() {
     super.onResume();
-    NavigationService.setDashboardVisible(true);
+    NavigationService.setDashboardVisible(this, true);
   }
 
   @Override
   protected void onPause() {
     cancelExit();
-    NavigationService.setDashboardVisible(false);
+    NavigationService.setDashboardVisible(this, false);
     super.onPause();
   }
 
@@ -829,11 +829,14 @@ public class MainActivity extends Activity {
       return;
     }
     handler.postDelayed(() -> {
-      if (NavigationService.isConnected()) return;
-      // Writing the same list doesn't notify Android, so take the service off and put it back.
-      setNavigationServices(others);
-      rebindHandler.postDelayed(() -> setNavigationServices(cur), NAV_REBIND_MS);
-      Log.i(TAG, "Navigation service listed but not running, rebinding");
+      NavigationService.ping(this);
+      rebindHandler.postDelayed(() -> {
+        if (NavigationService.isRecentlyConnected(this, SystemClock.elapsedRealtime())) return;
+        // Writing the same list doesn't notify Android, so take the service off and put it back.
+        setNavigationServices(others);
+        rebindHandler.postDelayed(() -> setNavigationServices(cur), NAV_REBIND_MS);
+        Log.i(TAG, "Navigation service listed but not running, rebinding");
+      }, 500);
     }, NAV_CHECK_MS);
   }
 
