@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.11.3 - 2026-11-07
+
+- Publish a metadata-only release to validate the complete in-app self-update and recovery path on the frame.
+
 ## 1.11.2 - 2026-11-07
 
 - Open the native update confirmation dialog from the update badge on Android 6 WebView.
