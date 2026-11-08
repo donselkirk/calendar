@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.11.9 - 2026-11-08
+
+- Make horizontal month swipes work reliably in the frame's Android WebView by handling touch gestures directly while reserving vertical movement for the browser.
+- Restore the Today shortcut beside weather when viewing another month and use quieter, uncircled month arrows with more spacing around the title.
+- Preserve the date and year beneath the clock when its time updates each minute.
+- Suppress Android WebView's transient video playback button while forecast scenes preload and start.
+
 ## 1.11.8 - 2026-11-08
 
 - Balance the calendar and forecast headers, make weather and update actions visually consistent, and keep the date display noninteractive.
