@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.11.2 - 2026-11-07
+
+- Open the native update confirmation dialog from the update badge on Android 6 WebView.
+
 ## 1.11.1 - 2026-11-07
 
 - Stage updater backups and APKs through app-owned streams so self-updates work on frames where root cannot traverse app-private storage.
