@@ -19,7 +19,7 @@
     var label = state.status === 'downloading' ? 'Downloading update' :
       (state.status === 'installing' ? 'Installing update' : 'Update ' + App.esc(state.versionName));
     return '<button class="update-badge" data-update aria-label="' + label + '">' +
-      App.icon('download', 20) + '<span>' + label + '</span></button>';
+      App.icon('download', 22) + '</button>';
   };
 
   App.refreshUpdateStatus = function () {

@@ -3,7 +3,7 @@
   'use strict';
   var D = window.DATA;
   var PX = 72, START = 6, END = 23; // 72px per hour, 6 AM → 11 PM
-  var V = { mode: 'month', page: 'calendar', date: null, el: null, scroll: null };
+  var V = { mode: 'month', page: 'calendar', date: null, el: null, scroll: null, moving: false };
 
   function y(d) { return ((d.getHours() + d.getMinutes() / 60) - START) * PX; }
   function clampTop(e, day) {
@@ -196,13 +196,12 @@
     var t = title();
     var isToday = V.date.getMonth() === App.now().getMonth() && V.date.getFullYear() === App.now().getFullYear();
     return '<header class="cal-head">' +
-      '<button class="icon-btn" data-nav="-1" aria-label="Previous">' + App.icon('left', 24) + '</button>' +
-      '<div class="cal-title"><div class="serif">' + t.t + '</div><div class="label">' + t.k + '</div></div>' +
-      '<button class="icon-btn" data-nav="1" aria-label="Next">' + App.icon('right', 24) + '</button>' +
-      '<button class="btn btn--ghost' + (isToday ? ' is-hidden' : '') + '" data-today>Today</button>' +
-      '<button class="cal-clock cal-date-link num" id="calendarClock" data-forecast aria-label="Open Ottawa forecast"></button>' +
-      App.weatherMarkup() +
-      App.updateMarkup() +
+      '<div class="cal-head-left">' + App.weatherMarkup() + '</div>' +
+      '<div class="cal-nav"><button class="icon-btn" data-nav="-1" aria-label="Previous month">' + App.icon('left', 26) + '</button>' +
+      '<div class="cal-title serif">' + t.t + '</div>' +
+      '<button class="icon-btn" data-nav="1" aria-label="Next month">' + App.icon('right', 26) + '</button>' +
+      '<button class="btn btn--ghost cal-today' + (isToday ? ' is-hidden' : '') + '" data-today>Today</button></div>' +
+      '<div class="cal-head-right">' + App.updateMarkup() + '<div class="cal-clock num" id="calendarClock"></div></div>' +
       (D.configMissing ? '<div class="config-warning" role="status">Device setup required</div>' : '') +
       '</header>';
   }
@@ -216,13 +215,9 @@
     return '<div class="forecast-stat">' + App.icon(icon, 24) + '<span>' + label + '</span><b class="num">' + value + '</b></div>';
   }
 
-  function weatherScene() {
-    return '<div class="weather-scene" aria-hidden="true">' +
-      '<i class="weather-stars"></i><i class="weather-orb"></i>' +
-      '<i class="weather-cloud weather-cloud--one"></i><i class="weather-cloud weather-cloud--two"></i>' +
-      '<i class="weather-rain"></i><i class="weather-snow"></i>' +
-      '<i class="weather-fog weather-fog--one"></i><i class="weather-fog weather-fog--two"></i>' +
-      '<i class="weather-flash"></i></div>';
+  function weatherVideo(scene) {
+    var file = { clear: 'clear', partly: 'clear', cloud: 'cloudy', fog: 'fog', rain: 'rain', snow: 'snow', storm: 'storm' }[scene] || 'cloudy';
+    return '<video class="weather-video" autoplay muted loop playsinline aria-hidden="true"><source src="/weather/' + file + '.mp4" type="video/mp4"></video><div class="weather-video-shade" aria-hidden="true"></div>';
   }
 
   function forecastPage() {
@@ -230,7 +225,7 @@
     var data = weather.data;
     var now = App.now();
     var head = '<header class="forecast-head"><button class="btn btn--ghost" data-calendar>' + App.icon('left', 22) + 'Calendar</button>' +
-      '<div><div class="label">Ottawa weather</div><h1 class="serif">8-day forecast</h1></div>' +
+      '<h1 class="serif">Ottawa Weather</h1>' +
       '<button class="btn btn--ghost" data-weather-refresh>' + App.icon('sun', 22) + 'Refresh</button></header>';
     if (!data || !data.current || !data.daily) {
       return '<div class="forecast-page">' + head + '<div class="forecast-empty">' + App.icon('cloud', 72) +
@@ -245,13 +240,12 @@
     var rain = Math.round(Number(daily.precipitation_probability_max[0]) || 0);
     var humidity = Math.round(Number(current.relative_humidity_2m) || 0);
     var wind = Math.round(Number(current.wind_speed_10m) || 0);
-    var today = '<section class="forecast-today weather-' + todayCondition.scene + ' ' + (isDay ? 'is-day' : 'is-night') + '">' + weatherScene() +
-      '<div class="forecast-today-icon">' + App.icon(todayCondition.icon, 116) + '</div>' +
-      '<div class="forecast-today-main"><div class="label label--light">Today · ' + App.fmt.day(now) + ', ' + App.fmt.month(now) + ' ' + now.getDate() + '</div>' +
-      '<h2 class="serif">' + App.esc(todayCondition.label) + '</h2><p>Feels like <b class="num">' + Math.round(Number(current.apparent_temperature)) + '°</b></p></div>' +
+    var today = '<section class="forecast-today weather-' + todayCondition.scene + ' ' + (isDay ? 'is-day' : 'is-night') + '">' + weatherVideo(todayCondition.scene) +
+      '<div class="forecast-today-copy"><div class="label label--light">Today · ' + App.fmt.day(now) + ', ' + App.fmt.month(now) + ' ' + now.getDate() + '</div>' +
       '<div class="forecast-now num">' + Math.round(Number(current.temperature_2m)) + '°</div>' +
+      '<h2 class="serif">' + App.esc(todayCondition.label) + '</h2><p>Feels like <b class="num">' + Math.round(Number(current.apparent_temperature)) + '°</b></p>' +
       '<div class="forecast-stats">' + weatherStat('sun', 'High', todayHigh + '°') + weatherStat('moon', 'Low', todayLow + '°') +
-      weatherStat('rain', 'Rain', rain + '%') + weatherStat('drop', 'Humidity', humidity + '%') + weatherStat('wind', 'Wind', wind + ' km/h') + '</div></section>';
+      weatherStat('rain', 'Rain', rain + '%') + weatherStat('drop', 'Humidity', humidity + '%') + weatherStat('wind', 'Wind', wind + ' km/h') + '</div></div></section>';
     var days = [];
     for (var i = 1; i < 8; i++) {
       if (!daily.time || !daily.time[i]) continue;
@@ -259,7 +253,7 @@
       var c = weather.condition(daily.weather_code[i], true);
       var chance = Math.round(Number(daily.precipitation_probability_max[i]) || 0);
       days.push('<article class="forecast-day"><div class="forecast-day-date"><b>' + App.fmt.dayShort(date) + '</b><span class="num">' + date.getDate() + '</span></div>' +
-        App.icon(c.icon, 50) + '<strong>' + App.esc(c.label) + '</strong><div class="forecast-day-temp num"><b>' + Math.round(Number(daily.temperature_2m_max[i])) + '°</b><span>' + Math.round(Number(daily.temperature_2m_min[i])) + '°</span></div>' +
+        App.icon(c.icon, 58) + '<strong>' + App.esc(c.label) + '</strong><div class="forecast-day-temp num"><b>' + Math.round(Number(daily.temperature_2m_max[i])) + '°</b><span>' + Math.round(Number(daily.temperature_2m_min[i])) + '°</span></div>' +
         '<div class="forecast-rain">' + App.icon('rain', 18) + '<span class="num">' + chance + '%</span></div></article>');
     }
     return '<div class="forecast-page">' + head + today + '<div class="forecast-next"><div class="label">Next seven days</div><div class="forecast-days">' + days.join('') + '</div></div></div>';
@@ -277,7 +271,7 @@
     V.el.innerHTML = '<div class="cal cal--month">' + header() + '<div class="cal-body">' + monthView() + '</div></div>';
     var clock = V.el.querySelector('#calendarClock'), nowForClock = App.now();
     if (clock) clock.innerHTML = '<div><b>' + App.fmt.time(nowForClock, false) + '</b><span>' + App.fmt.ampm(nowForClock) + '</span></div>' +
-      '<small>' + App.fmt.dayShort(nowForClock) + ' · ' + App.fmt.monthShort(nowForClock) + ' ' + nowForClock.getDate() + '</small>';
+      '<small>' + App.fmt.dayShort(nowForClock) + ' · ' + App.fmt.monthShort(nowForClock) + ' ' + nowForClock.getDate() + ' · ' + nowForClock.getFullYear() + '</small>';
     var sc = V.el.querySelector('.grid-scroll');
     if (sc) {
       var now = App.now();
@@ -287,9 +281,21 @@
   }
 
   function nav(dir) {
-    V.date = new Date(V.date.getFullYear(), V.date.getMonth() + dir, 1);
-    V.scroll = null;
-    render();
+    if (V.moving) return;
+    var body = V.el.querySelector('.cal-body');
+    if (!body) return;
+    V.moving = true;
+    body.classList.add(dir > 0 ? 'month-leave-left' : 'month-leave-right');
+    window.setTimeout(function () {
+      V.date = new Date(V.date.getFullYear(), V.date.getMonth() + dir, 1);
+      V.scroll = null;
+      render();
+      var next = V.el.querySelector('.cal-body');
+      if (next) {
+        next.classList.add(dir > 0 ? 'month-enter-right' : 'month-enter-left');
+        window.setTimeout(function () { next.classList.remove('month-enter-right', 'month-enter-left'); V.moving = false; }, 260);
+      } else V.moving = false;
+    }, 150);
   }
 
   function onClick(e) {
@@ -305,17 +311,28 @@
     if ((t = e.target.closest('[data-day]'))) return daySheet(new Date(+t.dataset.day));
   }
 
-  // Swipe left/right to change day (the only swipe gesture in the app)
+  // Swipe anywhere on the month grid to change months. Mouse pointers are supported for preview.
   function swipe(el) {
     var sx, sy, st;
-    el.addEventListener('pointerdown', function (e) { sx = e.clientX; sy = e.clientY; st = Date.now(); });
+    el.addEventListener('pointerdown', function (e) {
+      if (V.page !== 'calendar' || e.target.closest('button')) return;
+      sx = e.clientX; sy = e.clientY; st = Date.now();
+    });
+    el.addEventListener('pointermove', function (e) {
+      if (sx == null || V.moving) return;
+      var body = V.el.querySelector('.cal-body');
+      if (body && Math.abs(e.clientX - sx) > Math.abs(e.clientY - sy)) body.style.transform = 'translateX(' + Math.max(-90, Math.min(90, (e.clientX - sx) * .28)) + 'px)';
+    });
     el.addEventListener('pointerup', function (e) {
       if (V.page !== 'calendar') { sx = null; return; }
       if (sx == null) return;
       var dx = e.clientX - sx, dy = e.clientY - sy;
       sx = null;
-      if (Math.abs(dx) > 90 && Math.abs(dy) < 60 && Date.now() - st < 700 && !e.target.closest('.cal-head')) nav(dx < 0 ? 1 : -1);
+      var body = V.el.querySelector('.cal-body');
+      if (body) body.style.transform = '';
+      if (Math.abs(dx) > 70 && Math.abs(dy) < 75 && Date.now() - st < 900 && !e.target.closest('.cal-head')) nav(dx < 0 ? 1 : -1);
     });
+    el.addEventListener('pointercancel', function () { sx = null; var body = V.el.querySelector('.cal-body'); if (body) body.style.transform = ''; });
   }
 
   // ------------------------------------------------------------ sheets

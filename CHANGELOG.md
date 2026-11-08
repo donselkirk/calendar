@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.11.8 - 2026-11-08
+
+- Balance the calendar and forecast headers, make weather and update actions visually consistent, and keep the date display noninteractive.
+- Add mouse-and-touch month swiping with matching horizontal transitions for arrow navigation.
+- Replace synthetic forecast scenes with condition-matched photographic loops, integrate the daily details into the hero, and improve seven-day precipitation and icon visibility.
+- Use a softly animated native clock screensaver with randomized movement and colours that continue changing while dimmed, plus faded calendar and black-screen transitions.
+- Simplify the native controls and update dialogs; choosing Later now schedules the verified update for the nightly window.
+
 ## 1.11.7 - 2026-11-08
 
 - Keep the floating Back and Dashboard controls alive in a dedicated process when this frame kills the dashboard process on entry to Android Settings.

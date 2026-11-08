@@ -170,8 +170,16 @@ public class MainActivity extends Activity {
       handler.removeCallbacks(showControls);
       Log.i(TAG, "Opening kiosk controls");
       cancelPageTouches();
+      TextView controlsTitle = new TextView(MainActivity.this);
+      controlsTitle.setText("CONTROLS");
+      controlsTitle.setGravity(Gravity.CENTER);
+      controlsTitle.setTextColor(Color.rgb(34, 38, 36));
+      controlsTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
+      controlsTitle.setLetterSpacing(.16f);
+      controlsTitle.setTypeface(null, android.graphics.Typeface.BOLD);
+      controlsTitle.setPadding(24, 30, 24, 18);
       new AlertDialog.Builder(MainActivity.this)
-          .setTitle("Home HQ")
+          .setCustomTitle(controlsTitle)
           .setItems(new String[] {"Open launcher", "Android settings", "Wi-Fi settings", "Check for updates", "Reload dashboard"},
               (dialog, which) -> {
                 if (which == 0) openLauncher();
@@ -184,7 +192,7 @@ public class MainActivity extends Activity {
                       .setPositiveButton("OK", null).show();
                 } else web.reload();
               })
-          .setNegativeButton("Back to dashboard", null).show();
+          .setNegativeButton("Back to calendar", null).show();
     }
   };
 

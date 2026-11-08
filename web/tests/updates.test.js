@@ -10,7 +10,8 @@ describe('native update status boundary', () => {
     await import('../js/updates.js');
     await window.App.refreshUpdateStatus();
     await Promise.resolve();
-    expect(window.App.updateMarkup()).toContain('Update 1.12.0');
+    expect(window.App.updateMarkup()).toContain('aria-label="Update 1.12.0"');
+    expect(window.App.updateMarkup()).not.toContain('<span>');
     expect(window.App.emit).toHaveBeenCalledWith('update');
   });
 
