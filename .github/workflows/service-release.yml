@@ -1,0 +1,79 @@
+name: Calendar service release
+
+on:
+  push:
+    branches: [main]
+    paths: [service/version.properties]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: service-release-main
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 24
+      - env:
+          RELEASING: 1
+          BEFORE: ${{ github.event.before }}
+        run: |
+          bash scripts/privacy-scan.sh
+          bash scripts/validate-version.sh service "$BEFORE"
+      - run: |
+          npm install --global pnpm@11.25.0
+          pnpm --dir web install --frozen-lockfile
+          pnpm --dir web exec playwright install --with-deps chromium
+          bash scripts/check-service.sh
+          bash scripts/package-service.sh
+          docker run --rm -v "$PWD:/calendar:ro" -w /calendar debian:13-slim \
+            bash -c 'apt-get update && apt-get install -y ca-certificates curl python3 && bash scripts/smoke-service-package.sh'
+          version="$(sed -n 's/^VERSION_NAME=//p' service/version.properties)"
+          echo "ARTIFACT_DIR=artifacts/service-v$version/" >> "$GITHUB_ENV"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: service-release
+          path: ${{ env.ARTIFACT_DIR }}
+          if-no-files-found: error
+  publish:
+    needs: verify
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: service-release
+          path: release
+      - id: attest
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6
+        with:
+          subject-path: release/*.tar.gz
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          ATTESTATION: ${{ steps.attest.outputs.bundle-path }}
+        run: |
+          version="$(sed -n 's/^VERSION_NAME=//p' service/version.properties)"
+          archive="release/homehq-service-v$version-amd64.tar.gz"
+          cp "$ATTESTATION" "$archive.attestation.jsonl"
+          gh attestation verify "$archive" --bundle "$archive.attestation.jsonl" \
+            --repo "$GITHUB_REPOSITORY" --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/service-release.yml" \
+            --source-ref refs/heads/main --source-digest "$GITHUB_SHA" --deny-self-hosted-runners
+          bash scripts/changelog-section.sh "$version" service > "$RUNNER_TEMP/service-notes.md"
+          printf '\n### Install in the Proxmox host shell\n\n```bash\n' >> "$RUNNER_TEMP/service-notes.md"
+          printf 'curl -fsSLo homehq-install.sh https://raw.githubusercontent.com/%s/%s/scripts/install-proxmox.sh && bash homehq-install.sh --ref %s\n' \
+            "$GITHUB_REPOSITORY" "$GITHUB_SHA" "$GITHUB_SHA" >> "$RUNNER_TEMP/service-notes.md"
+          printf '```\n' >> "$RUNNER_TEMP/service-notes.md"
+          gh release create "service-v$version" release/* --target "$GITHUB_SHA" \
+            --title "Home HQ Service $version" --notes-file "$RUNNER_TEMP/service-notes.md" --latest=false

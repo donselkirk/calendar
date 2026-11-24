@@ -1,36 +1,8 @@
-# Home HQ Calendar engineering context
+# Home HQ engineering context
 
-Read this file before changing the project.
-
-## Product and device
-
-- The application is a local-first month calendar and Ottawa weather/forecast display.
-- Target hardware: Pastigio M10R7, Rockchip RK3126C, Android 6, firmware 1.32.16.
-- Target viewport: 1280×800 landscape. Target WebView: Chromium 106; CSS must remain Chrome 61-compatible.
-- Android package and WebView origin are compatibility contracts: `com.wesbos.homehq` and `http://127.0.0.1:8765/`.
-- Current first GitHub-managed version is in `version.properties`.
-
-## Security and privacy invariants
-
-- This is a public repository. Never add household names, street addresses, ReCollect place IDs, device serials, APK/data backups, credentials, keystores, or passwords.
-- Private values belong only in the ignored `device-config.json` and on-device `files/device-config.json`.
-- Do not add a JavaScript native bridge. Web code may read only constrained same-origin endpoints; installation, signatures, root calls, scheduling, and brightness remain native.
-- An update is installable only when versionCode increases and its SHA-256, package ID, and signing certificate all verify.
-- Preserve the existing signing key outside Git. A different signer cannot upgrade the installed application.
-- `sources/` in the enclosing ChatGPT project is read-only and must never be modified.
-
-## Workflow
-
-- Work on `feature/*`, `fix/*`, or `chore/*` branches and merge by squash PR.
-- Functional changes require tests, a semantic version/versionCode bump, and a `CHANGELOG.md` entry.
-- Run `./scripts/check.sh` before opening a PR. CI must pass without secrets.
-- Native updater or display changes also require a signed release-candidate smoke test on the physical frame before merge.
-- Keep migrations idempotent. Add a saved fixture for every released storage schema and test direct migration to current.
-
-## Release and recovery
-
-- Main-branch CI rebuilds and tests before using the branch-restricted `release` Environment.
-- Release assets are the signed APK, `update-manifest.json`, and web archive.
-- Automatic nightly installation remains disabled until the on-frame 1.11.1 self-update and rollback drill succeeds.
-- Keep the previous APK plus an atomic app-data export. Recovery is a tested ADB rollback, not a companion watchdog.
-
+- The Node.js LXC service owns the responsive Vite interface in `web/`, SQLite events, Ottawa forecast and collection caches, Ontario holidays, and household configuration. Keep API v1 and kiosk protocol 1 compatible across independent app and service releases.
+- The APK owns the WebView, native settings and navigation recovery, Home behavior, the animated screensaver, and verified APK updates. Device target is the Pastigio M10R7 with Rockchip RK3126C and Android 6 firmware 1.32.16. Keep Java 8 source compatibility, minSdk 23, targetSdk 28, compileSdk 34, WebView 106, CSS Chrome 61, and the 1280×800 frame layout.
+- Preserve `com.wesbos.homehq`, the signing certificate, and legacy app data. The original origin `http://127.0.0.1:8765/` is used for pre-cutover export only. Do not add a JavaScript native bridge or open native actions to external origins.
+- Home HQ is LAN-only with no login. Preserve Proxmox firewall rules, same-origin write checks, and display-safe configuration. Never commit household names, addresses, identifiers, exports, backups, serials, credentials, or keys. Leave the enclosing ChatGPT project's `sources/` untouched.
+- Work on `feature/*`, `fix/*`, or `chore/*` and squash via PR. Bump the relevant product version and changelog for functional changes. Run `bash scripts/check.sh` before a PR. Native updater/display changes require a signed physical-frame smoke test before merge. PR checks use no signing secrets.
+- Keep SQLite migrations safe for direct upgrades from every supported schema. Simulate failures and verify recovery before changing update logic. See the deployment runbook for storage, rollback, frame export, and release acceptance.

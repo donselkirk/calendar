@@ -22,6 +22,13 @@ badging="$($tools/aapt dump badging "$apk")"
 grep -q "package: name='com.wesbos.homehq'" <<<"$badging"
 grep -q "sdkVersion:'23'" <<<"$badging"
 grep -q "targetSdkVersion:'28'" <<<"$badging"
+version="$(sed -n 's/^VERSION_NAME=//p' android/version.properties)"
+code="$(sed -n 's/^VERSION_CODE=//p' android/version.properties)"
+grep -Fq "versionCode='$code' versionName='$version'" <<<"$badging"
+if unzip -Z1 "$apk" | grep '^assets/site/' >/dev/null; then
+  echo "APK still contains a bundled calendar site" >&2
+  exit 1
+fi
 
 verify="$($tools/apksigner verify --verbose --print-certs "$apk")"
 grep -q 'Verified using v1 scheme (JAR signing): true' <<<"$verify"

@@ -1,6 +1,7 @@
 // Calendar: month-only wall display.
 (function () {
   'use strict';
+  var Date = App.CalendarDate;
   var D = window.DATA;
   var PX = 72, START = 6, END = 23; // 72px per hour, 6 AM → 11 PM
   var V = { mode: 'month', page: 'calendar', date: null, el: null, scroll: null, moving: false };
@@ -177,9 +178,11 @@
         return '<button class="mo-event" data-ev="' + e.id + '" style="' + App.pstyle(App.evColor(e)) + '"><i></i><span>' +
           (e.allDay ? '' : '<b>' + App.fmt.time(e.start, false) + '</b> ') + App.esc(e.title) + '</span></button>';
       }).join('');
-      cells += '<div class="mo-cell' + (d.getMonth() !== first.getMonth() ? ' is-out' : '') + (App.sameDay(d, now) ? ' is-today' : '') + '" data-day="' + (+d) + '">' +
+      cells += '<div class="mo-cell' + (d.getMonth() !== first.getMonth() ? ' is-out' : '') + (App.sameDay(d, now) ? ' is-today' : '') + '" data-day="' + (+d) + '"' +
+        (window.HOMEHQ_SERVICE && !window.HOMEHQ_FRAME ? ' tabindex="0" aria-label="' + App.fmt.month(d) + ' ' + d.getDate() + '"' : '') + '>' +
         '<span class="num">' + d.getDate() + '</span>' +
-        (waste.length ? '<div class="waste-markers">' + waste.map(App.wasteIcon).join('') + '</div>' : '') +
+        (waste.length ? '<div class="waste-markers"' + (App.wasteStale && App.wasteStale() ?
+          ' title="Showing the last saved collection schedule"' : '') + '>' + waste.map(App.wasteIcon).join('') + '</div>' : '') +
         (holidays.length ? '<div class="mo-holiday" title="Ontario public holiday">' + App.holidayIcon() + '<span>' + App.esc(holidays[0].name) + '</span></div>' : '') +
         '<div class="mo-events">' + items +
         (evs.length > 3 ? '<button class="mo-more" data-day="' + (+d) + '">+' + (evs.length - 3) + ' more</button>' : '') + '</div></div>';
@@ -201,7 +204,8 @@
       '<div class="cal-title serif">' + t.t + '</div>' +
       '<button class="icon-btn" data-nav="1" aria-label="Next month">' + App.icon('right', 26) + '</button></div>' +
       '<div class="cal-head-right">' + App.updateMarkup() + '<div class="cal-clock num" id="calendarClock"></div></div>' +
-      (D.configMissing ? '<div class="config-warning" role="status">Device setup required</div>' : '') +
+      (D.configMissing ? '<div class="config-warning" role="status">' + (window.HOMEHQ_SERVICE ?
+        'Household setup required' : 'Device setup required') + '</div>' : '') +
       '</header>';
   }
 
@@ -404,14 +408,30 @@
       (e.travel ? '<div class="evs-row evs-leave">' + App.icon('car', 28) + '<div><b>Leave by ' + App.fmt.time(App.leaveBy(e)) + '</b><span>' + e.travel + ' min drive in current traffic</span></div></div>' : '') +
       (e.loc ? '<div class="evs-row">' + App.icon('pin', 28) + '<div><b>' + App.esc(e.loc) + '</b><span>Tap to send directions to phone</span></div></div>' : '') +
       '<div class="evs-row">' + App.icon('person', 28) + '<div class="evs-people">' + (fam ? D.people : e.people.map(App.person)).map(function (x) {
-        return '<span class="chip" style="' + App.pstyle(x) + '">' + App.avatar(x, 32) + x.name + '</span>';
+        return '<span class="chip" style="' + App.pstyle(x) + '">' + App.avatar(x, 32) + App.esc(x.name) + '</span>';
       }).join('') + '</div></div>' +
       (e.notes ? '<div class="evs-notes serif">“' + App.esc(e.notes) + '”</div>' : '') +
       '<div class="sheet-actions"><button class="btn btn--danger" data-delete>Delete ' + (e.seriesId ? 'series' : 'event') + '</button></div>' +
       '</div></div>', { cls: 'sheet--event' });
     var sheet = document.querySelector('.sheet--event');
-    sheet.querySelector('[data-delete]').addEventListener('click', function () {
-      var stored = e.seriesId ? D.events.filter(function (item) { return item.id === e.seriesId; })[0] : e;
+    sheet.querySelector('[data-delete]').addEventListener('click', async function (ev) {
+      var stored = e.seriesId ? D.events.find(function (item) { return item.id === e.seriesId; }) : e;
+      if (window.HOMEHQ_SERVICE) {
+        var button = ev.currentTarget;
+        button.disabled = true;
+        try {
+          var deleted = await App.deleteSharedEvent(stored);
+          App.closeSheet();
+          App.emit('data');
+          App.toast('Deleted <b>' + App.esc(e.title) + '</b>', {
+            icon: 'calendar', undo: function () { sharedUndo(App.restoreSharedEvent, deleted); }
+          });
+        } catch (_error) {
+          button.disabled = false;
+          App.toast('Could not delete this event. Check the calendar and try again.', { tone: 'alert' });
+        }
+        return;
+      }
       var index = D.events.indexOf(stored);
       if (index < 0) return;
       D.events.splice(index, 1);
@@ -429,6 +449,15 @@
       });
     });
   };
+
+  async function sharedUndo(action, event) {
+    try {
+      await action(event);
+      App.emit('data');
+    } catch (_error) {
+      App.toast('Could not undo. Check the calendar and try again.', { tone: 'alert' });
+    }
+  }
 
   function moreSheet(ids) {
     var list = ids.map(App.findEvent).filter(Boolean);
@@ -458,8 +487,8 @@
       '<div class="label">New event</div>' +
       '<input class="big-input serif" type="text" enterkeyhint="done" autocomplete="off" placeholder="What’s happening?" data-f="title">' +
       '<div class="chips">' + ideas.map(function (i) { return '<button class="chip chip--ghost" data-idea="' + i + '">' + i + '</button>'; }).join('') + '</div>' +
-      '<div class="label">Calendar</div><div class="add-who"><button class="who-btn is-on" data-who="all" style="' + App.pstyle(D.family) + '">' + App.avatar(D.family, 56) + '<span>Family</span></button>' + D.people.map(function (p) {
-        return '<button class="who-btn" data-who="' + p.id + '" style="' + App.pstyle(p) + '">' + App.avatar(p, 56) + '<span>' + p.name + '</span></button>';
+      '<div class="label">Calendar</div><div class="add-who"><button class="who-btn is-on" data-who="all" style="' + App.pstyle(D.family) + '">' + App.avatar(D.family, 56) + '<span>' + App.esc(D.family.name) + '</span></button>' + D.people.map(function (p) {
+        return '<button class="who-btn" data-who="' + p.id + '" style="' + App.pstyle(p) + '">' + App.avatar(p, 56) + '<span>' + App.esc(p.name) + '</span></button>';
       }).join('') + '</div>' +
       '<div class="label">Event type</div><div class="chips"><button class="chip is-on" data-kind="all-day">All day</button><button class="chip" data-kind="timed">Set a time</button></div>' +
       '<div class="add-row" data-timed-fields hidden><div><div class="label">Time</div><div class="time-picker">' +
@@ -483,7 +512,7 @@
           ev.preventDefault();
           input.blur();
         });
-        s.addEventListener('click', function (ev) {
+        s.addEventListener('click', async function (ev) {
           var t = ev.target.closest('button');
           if (!t) return;
           if (t.dataset.idea) { input.value = t.dataset.idea; }
@@ -525,6 +554,22 @@
             if (!st.allDay) start.setHours(+p[0], +p[1]);
             var end = st.allDay ? App.addDays(start, 1) : new Date(+start + st.dur * 60000);
             var e = { id: D._eid(), title: title, people: who, start: start, end: end, allDay: st.allDay, repeat: st.repeat };
+            if (window.HOMEHQ_SERVICE) {
+              t.disabled = true;
+              try {
+                var created = await App.createSharedEvent(e, s);
+                close();
+                V.date = new Date(start.getFullYear(), start.getMonth(), 1); V.scroll = null;
+                App.emit('data');
+                App.toast('Added <b>' + App.esc(title) + '</b>', {
+                  icon: 'calendar', undo: function () { sharedUndo(App.deleteSharedEvent, created); }
+                });
+              } catch (_error) {
+                t.disabled = false;
+                App.toast('Could not save. The event is still open so you can retry.', { tone: 'alert' });
+              }
+              return;
+            }
             D.events.push(e);
             var saved = App.saveEvents();
             close();
@@ -552,6 +597,11 @@
       if (!V.el) {
         V.el = el;
         el.addEventListener('click', onClick);
+        el.addEventListener('keydown', function (event) {
+          if (!event.target.matches('.mo-cell') || (event.key !== 'Enter' && event.key !== ' ')) return;
+          event.preventDefault();
+          event.target.click();
+        });
         swipe(el);
       }
       if (!V.date) V.date = App.dayStart(App.now());
@@ -573,5 +623,8 @@
   });
   App.on('weather', function () { if (V.el) render(); });
   App.on('waste', function () { if (V.el) render(); });
+  App.on('data', function () {
+    if (window.HOMEHQ_SERVICE && V.el && V.page === 'calendar') render();
+  });
   App.on('update', function () { if (V.el) render(); });
 })();

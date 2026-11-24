@@ -6,4 +6,4 @@ awk -v version="$version" '
   found && /^## / { exit }
   found { print }
   END { if (!found) exit 2 }
-' CHANGELOG.md
+' "CHANGELOG.${2:-app}.md"

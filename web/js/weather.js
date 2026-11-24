@@ -48,29 +48,36 @@
     }
     var cur = state.data.current, daily = state.data.daily;
     var c = condition(cur.weather_code, Number(cur.is_day) === 1);
-    var stale = App.now().getTime() - state.fetchedAt > 3 * 60 * 60 * 1000;
+    var stale = state.error || (window.HOMEHQ_SERVICE ? App.clockEpoch() : App.now().getTime()) - state.fetchedAt > 3 * 60 * 60 * 1000;
     var temp = Math.round(Number(cur.temperature_2m));
     var hi = Math.round(Number(daily.temperature_2m_max[0]));
     var lo = Math.round(Number(daily.temperature_2m_min[0]));
     return '<button class="cal-weather' + (stale ? ' is-stale' : '') + '" data-forecast aria-label="Open Ottawa forecast">' +
-      App.icon(c.icon, 30) + '<span><b class="num">' + temp + '°</b><small>Ottawa · ' + c.label + '<br>H ' + hi + '° · L ' + lo + '°</small></span></button>';
+      App.icon(c.icon, 30) + '<span><b class="num">' + temp + '°</b><small>Ottawa · ' + c.label + (stale ? ' · Saved' : '') + '<br>H ' + hi + '° · L ' + lo + '°</small></span></button>';
   };
 
   App.refreshWeather = function (manual) {
     if (state.loading) return;
     state.loading = true;
     state.error = false;
-    return fetch(URL, { cache: 'no-store' }).then(function (response) {
+    return fetch(window.HOMEHQ_SERVICE ? '/api/v1/weather' : URL, { cache: 'no-store' }).then(function (response) {
       if (!response.ok) throw new Error('Weather HTTP ' + response.status);
       return response.json();
     }).then(function (data) {
+      if (window.HOMEHQ_SERVICE) {
+        state.fetchedAt = data.fetchedAt;
+        state.error = data.stale;
+        data = data.data;
+      }
       if (!valid(data)) throw new Error('Unexpected weather response');
       state.data = data;
-      state.fetchedAt = App.now().getTime();
+      if (!window.HOMEHQ_SERVICE) state.fetchedAt = App.now().getTime();
       state.loading = false;
-      try { window.localStorage.setItem(CACHE_KEY, JSON.stringify({ fetchedAt: state.fetchedAt, data: data })); } catch (_err) {}
+      if (!window.HOMEHQ_SERVICE) {
+        try { window.localStorage.setItem(CACHE_KEY, JSON.stringify({ fetchedAt: state.fetchedAt, data: data })); } catch (_err) {}
+      }
       App.emit('weather');
-      if (manual) App.toast('Ottawa weather updated', { icon: 'sun', ms: 2200 });
+      if (manual && !state.error) App.toast('Ottawa weather updated', { icon: 'sun', ms: 2200 });
     }).catch(function (err) {
       state.loading = false;
       state.error = true;

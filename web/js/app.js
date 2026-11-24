@@ -1,11 +1,13 @@
 // Core shell: router, demo clock, idle/ambient, toasts, sheets, helpers.
+import { TorontoDate, instant, wallTime } from './toronto.js';
+
 (function () {
   'use strict';
+  var Date = window.HOMEHQ_SERVICE ? TorontoDate : globalThis.Date;
   var D = window.DATA;
 
-  // The kiosk calendar is deliberately device-local. The static demo data is still used by the
-  // other prototype views, but calendar events are loaded only from this WebView's localStorage.
-  // Keeping the storage key versioned gives us a safe migration point if the shape changes later.
+  // Disposable browser previews still use the legacy fixture format. Production reads SQLite
+  // records through the service API and never writes these keys.
   var CALENDAR_KEY = 'homehq.local.calendar.v1';
   var config = window.DEVICE_CONFIG;
   function rgb(hex) {
@@ -53,7 +55,7 @@
     }
   }
 
-  D.events = loadLocalEvents();
+  D.events = window.HOMEHQ_SERVICE ? [] : loadLocalEvents();
   D.busyExtras = [];
   var localEventSequence = 0;
   D._eid = function () {
@@ -61,11 +63,12 @@
     return 'local-' + App.now().getTime().toString(36) + '-' + localEventSequence.toString(36);
   };
 
-  var App = window.App = { state: D, views: {}, current: null, mode: 'day', calMode: 'normal' };
+  var App = window.App = { state: D, views: {}, current: null, mode: 'day', calMode: 'normal', CalendarDate: Date };
   var $ = App.$ = function (s, r) { return (r || document).querySelector(s); };
   App.$$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); };
 
   App.saveEvents = function () {
+    if (window.HOMEHQ_SERVICE) return false;
     try {
       window.localStorage.setItem(CALENDAR_KEY, JSON.stringify({ version: 2, events: D.events }));
       return true;
@@ -123,19 +126,23 @@
   }
   if (!validEpoch(Date.now())) useTrustedClock(cachedClock());
 
-  App.now = function () {
+  App.clockEpoch = function () {
     if (trustedEpoch != null) {
       var elapsed = window.performance && performance.now ? performance.now() - trustedStarted : 0;
-      return new Date(trustedEpoch + elapsed);
+      return trustedEpoch + elapsed;
     }
-    return new Date(Date.now() + offset);
+    return Date.now() + offset;
+  };
+  App.now = function () {
+    var epoch = App.clockEpoch();
+    return new Date(window.HOMEHQ_SERVICE ? wallTime(epoch) : epoch);
   };
   App.clockReady = function () { return validEpoch(App.now().getTime()); };
   App.setTrustedNow = useTrustedClock;
   App.refreshClock = function () {
     if (validEpoch(Date.now()) || clockRequestPending) return;
     clockRequestPending = true;
-    fetch('/__network_time', { cache: 'no-store' }).then(function (response) {
+    fetch(window.HOMEHQ_SERVICE ? '/api/v1/time' : '/__network_time', { cache: 'no-store' }).then(function (response) {
       if (!response.ok) throw new Error('Clock HTTP ' + response.status);
       return response.json();
     }).then(function (data) {
@@ -255,6 +262,10 @@
     if (ev.allDay) {
       var span = Math.max(1, dayNumber(ev.end) - dayNumber(ev.start));
       end = App.addDays(start, span);
+    } else if (window.HOMEHQ_SERVICE) {
+      var epoch = instant(+start);
+      start = new Date(wallTime(epoch));
+      end = new Date(wallTime(epoch + ev.durationMs));
     } else {
       end = new Date(+start + (ev.end - ev.start));
     }
@@ -474,6 +485,7 @@
   var STAGE_H = 800, STAGE_MIN_W = 1280;
   function fit() {
     var stage = $('#stage');
+    if (document.documentElement.classList.contains('desktop')) return;
     var w = Math.max(STAGE_MIN_W, Math.round(STAGE_H * window.innerWidth / window.innerHeight));
     stage.style.setProperty('--stage-w', w + 'px');
     var s = Math.min(window.innerWidth / w, window.innerHeight / STAGE_H);
@@ -508,7 +520,7 @@
     App.emit('second', n);
     if (n.getMinutes() !== lastMin) {
       lastMin = n.getMinutes();
-      if (validEpoch(n.getTime())) rememberClock(n.getTime());
+      if (validEpoch(App.clockEpoch())) rememberClock(App.clockEpoch());
       App.updateClock($('#calendarClock'), n);
       App.emit('minute', n);
     }
@@ -518,6 +530,7 @@
   App.start = function () {
     // Keep the cached/network anchor selected when Android is still reporting 1969.
     if (validEpoch(Date.now())) App.setTime(null);
+    else if (window.HOMEHQ_SERVICE) useTrustedClock(config.epoch);
     fit();
     window.addEventListener('resize', fit);
     document.addEventListener('pointerdown', App.resetIdle, true);

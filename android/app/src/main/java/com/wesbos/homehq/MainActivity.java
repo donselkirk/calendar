@@ -39,13 +39,10 @@ import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.util.HashMap;
-import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -53,15 +50,9 @@ import java.util.Map;
  * - Immersive mode hides the status + navigation bars (true 1280x800).
  * - Controls: hold two fingers still on the screen for 1.5s for launcher/settings/Wi-Fi/reload.
  *   Optional single-tap Menu button: launch with --ez menu_button true (false removes it).
- * - Offline: a failed page load shows a native screen instead of WebView's error page (which
- *   prints the full URL, including any token in it). With no Wi-Fi it offers Wi-Fi settings.
- * - Remote debugging is OFF unless launched with the debug extra (every app on this device
- *   gets root, so the devtools socket should only exist while actively debugging):
- *     adb shell am start -n com.wesbos.homehq/.MainActivity --ez debug true
- * - Launch with a URL: adb shell am start -a android.intent.action.VIEW -d <url> -n com.wesbos.homehq/.MainActivity
- * - Set the saved URL, used on every later launch: adb shell am start -n com.wesbos.homehq/.MainActivity --es url <url>
- * - A site bundled at build time (KIOSK_SITE) is answered at http://127.0.0.1:8765/ from the
- *   APK's assets/site/, with no server; every other URL goes to the network as usual.
+ * - The private service address is entered in Controls or written through the ADB provisioner.
+ * - Failed readiness checks show the native connection screen and retry automatically.
+ * - WebView inspection is available only through an explicit request on a debug APK.
  * - Offer the kiosk as a Home app (--ez home false undoes it), then pick it:
  *     adb shell am start -n com.wesbos.homehq/.MainActivity --ez home true
  *     adb shell cmd package set-home-activity com.wesbos.homehq/.Home
@@ -70,9 +61,7 @@ import java.util.Map;
  */
 public class MainActivity extends Activity {
   static final String TAG = "HomeHQ";
-  static final String DEFAULT_URL = "http://127.0.0.1:8765/";
   static final String PREFS = "kiosk";
-  static final String PREF_URL = "url";
   static final String PREF_MENU_BUTTON = "menu_button";
   static final long EXIT_HOLD_MS = 1500;
   static final int CANCEL_POINTER_IDS = 10; // touch ids 0-9
@@ -81,14 +70,6 @@ public class MainActivity extends Activity {
   static final long NAV_CHECK_MS = 5000;
   static final long NAV_REBIND_MS = 1000;
   static final float EXIT_SLOP_PX = 60;
-  static final String LOCAL_HOST = "127.0.0.1";
-  static final int LOCAL_PORT = 8765;
-  static final String LOCAL_ASSETS = "site";
-  static final String WASTE_PATH = "/__waste";
-  static final String CONFIG_PATH = "/__config";
-  static final String UPDATE_STATUS_PATH = "/__update_status";
-  static final String UPDATE_UI_PATH = "/__update_ui";
-  static final String NETWORK_TIME_PATH = "/__network_time";
   // Android's own captive portal check: 204 when online, anything else when a portal answers.
   // Plain HTTP so a portal can redirect it, and so it works before the clock is set.
   static final String PORTAL_PROBE = "http://connectivitycheck.gstatic.com/generate_204";
@@ -99,7 +80,12 @@ public class MainActivity extends Activity {
 
   private WebView web;
   private Button menuButton;
-  private DeviceConfig deviceConfig;
+  private volatile String serviceUrl;
+  private volatile boolean dashboardReady;
+  private int consecutiveFailures, probeGeneration;
+  private final java.util.concurrent.ExecutorService healthExecutor =
+      java.util.concurrent.Executors.newSingleThreadExecutor();
+  private final Runnable readiness = () -> probeDashboard(false);
   private ScreenSaverController screenSaver;
   private boolean consumingWakeTouch;
   private final Handler handler = new Handler(Looper.getMainLooper());
@@ -118,7 +104,8 @@ public class MainActivity extends Activity {
   private TextView offlineTitle, offlineText;
   private Button signIn;
   // Captive portal: found by the last probe, on screen, closed by the owner, or its page failed.
-  private boolean probing, portalFound, portalMode, portalDismissed, portalFailed;
+  private boolean probing, portalFound, portalDismissed, portalFailed;
+  private volatile boolean portalMode;
   private long portalSince;
   private LinearLayout portalBar;
   private TextView portalText;
@@ -180,17 +167,16 @@ public class MainActivity extends Activity {
       controlsTitle.setPadding(24, 30, 24, 18);
       new AlertDialog.Builder(MainActivity.this)
           .setCustomTitle(controlsTitle)
-          .setItems(new String[] {"Open launcher", "Android settings", "Wi-Fi settings", "Check for updates", "Reload dashboard"},
+          .setItems(new String[] {"Calendar service address", "App updates", "Reload dashboard", "Wi-Fi settings",
+              "Android settings", "Open launcher", "Nightly app updates"},
               (dialog, which) -> {
-                if (which == 0) openLauncher();
-                else if (which == 1) startActivity(new Intent(Settings.ACTION_SETTINGS));
-                else if (which == 2) openWifiSettings();
-                else if (which == 3) {
-                  UpdateManager.start(MainActivity.this, UpdateManager.ACTION_CHECK);
-                  new AlertDialog.Builder(MainActivity.this).setTitle("Checking for updates")
-                      .setMessage("The update badge will appear when a newer verified release is available.")
-                      .setPositiveButton("OK", null).show();
-                } else web.reload();
+                if (which == 0) configureService();
+                else if (which == 1) UpdateManager.showDialog(MainActivity.this);
+                else if (which == 2) { closePortal(); load(savedUrl()); }
+                else if (which == 3) openWifiSettings();
+                else if (which == 4) startActivity(new Intent(Settings.ACTION_SETTINGS));
+                else if (which == 5) openLauncher();
+                else UpdateManager.chooseNightly(MainActivity.this);
               })
           .setNegativeButton("Back to calendar", null).show();
     }
@@ -202,13 +188,15 @@ public class MainActivity extends Activity {
     applyDebugFlag(getIntent());
     applyHomeFlag(getIntent());
     keepNavigationEnabled();
-    deviceConfig = DeviceConfig.load(getFilesDir());
+    serviceUrl = ServiceAddress.load(getFilesDir());
     getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
         | WindowManager.LayoutParams.FLAG_FULLSCREEN);
 
     web = new WebView(this);
     WebSettings s = web.getSettings();
     s.setJavaScriptEnabled(true);
+    s.setAllowFileAccess(false);
+    s.setAllowContentAccess(false);
     s.setDomStorageEnabled(true);
     s.setUseWideViewPort(true);
     s.setMediaPlaybackRequiresUserGesture(false);
@@ -218,7 +206,7 @@ public class MainActivity extends Activity {
     web.setWebViewClient(new WebViewClient() {
       @Override
       public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest req) {
-        return localAsset(req.getUrl());
+        return deviceResponse(req);
       }
 
       @Override
@@ -236,6 +224,10 @@ public class MainActivity extends Activity {
 
       @Override
       public void onPageStarted(WebView view, String url, Bitmap icon) {
+        if (!portalMode && !ServiceAddress.sameOrigin(Uri.parse(url), serviceUrl)) {
+          view.stopLoading();
+          return;
+        }
         pageFailed = false;
         mainUrl = url;
       }
@@ -266,11 +258,20 @@ public class MainActivity extends Activity {
         Log.w(TAG, "Load failed (" + desc + "), retrying in " + RETRY_MS + " ms");
         pageFailed = true;
         showOffline();
-        retryUrl = failingUrl;
+        retryUrl = savedUrl();
         handler.removeCallbacks(retry);
         handler.removeCallbacks(stall);
         retryPending = true;
         handler.postDelayed(retry, RETRY_MS);
+      }
+
+      @Override
+      public void onReceivedHttpError(WebView view, WebResourceRequest request, WebResourceResponse response) {
+        if (!portalMode && request.isForMainFrame()) {
+          pageFailed = true;
+          dashboardReady = false;
+          showOffline();
+        }
       }
 
       @Override
@@ -334,8 +335,7 @@ public class MainActivity extends Activity {
     screenSaver = new ScreenSaverController(this, root, handler);
     setContentView(root);
 
-    String url = urlFrom(getIntent());
-    load(url != null ? url : savedUrl());
+    load(savedUrl());
     @SuppressWarnings("deprecation")
     IntentFilter connectivity = new IntentFilter(ConnectivityManager.CONNECTIVITY_ACTION);
     connectivity.addAction(Intent.ACTION_TIME_CHANGED); // network time arrived after a power cut
@@ -345,21 +345,12 @@ public class MainActivity extends Activity {
   }
 
   private boolean handleUpdateNavigation(Uri uri, boolean mainFrame) {
-    if (!isUpdateUiNavigation(uri, mainFrame)) return false;
-    handler.post(() -> UpdateManager.showDialog(MainActivity.this));
-    return true;
-  }
-
-  static boolean isUpdateUiNavigation(Uri uri, boolean mainFrame) {
-    return uri != null && isUpdateUiNavigation(mainFrame, uri.getScheme(), uri.getHost(), uri.getPort(),
-        uri.getPath(), uri.getQuery(), uri.getFragment(), uri.getUserInfo());
-  }
-
-  static boolean isUpdateUiNavigation(boolean mainFrame, String scheme, String host, int port,
-      String path, String query, String fragment, String userInfo) {
-    return mainFrame && "http".equalsIgnoreCase(scheme) && LOCAL_HOST.equals(host)
-        && port == LOCAL_PORT && UPDATE_UI_PATH.equals(path) && query == null && fragment == null
-        && userInfo == null;
+    if (portalMode) return false;
+    if (dashboardReady && mainFrame && ServiceAddress.exact(uri, savedUrl(), ServiceAddress.UPDATE)) {
+      handler.post(() -> UpdateManager.showDialog(MainActivity.this));
+      return true;
+    }
+    return !ServiceAddress.sameOrigin(uri, savedUrl());
   }
 
   @Override
@@ -382,221 +373,121 @@ public class MainActivity extends Activity {
     applyDebugFlag(intent);
     applyHomeFlag(intent);
     applyMenuButtonFlag(intent);
-    String url = urlFrom(intent);
-    if (url != null) {
+    String url = ServiceAddress.load(getFilesDir());
+    if (url != null && !url.equals(serviceUrl)) {
       closePortal();
       handler.removeCallbacks(retry);
       handler.removeCallbacks(stall);
       retryPending = false;
+      serviceUrl = url;
       retryUrl = url;
       load(url);
     }
   }
 
-  /** A "url" extra is saved for later launches. A VIEW link from another app is shown, not saved. */
-  private String urlFrom(Intent intent) {
-    String saved = intent.getStringExtra(PREF_URL);
-    if (saved == null) return intent.getDataString();
-    // The activity is exported, so only save web URLs: never file:, content: or javascript:.
-    String scheme = Uri.parse(saved).getScheme();
-    if (!"http".equalsIgnoreCase(scheme) && !"https".equalsIgnoreCase(scheme)) {
-      Log.w(TAG, "Ignoring non-web kiosk URL (scheme " + scheme + ")");
-      return null;
-    }
-    getSharedPreferences(PREFS, MODE_PRIVATE).edit().putString(PREF_URL, saved).apply();
-    Log.i(TAG, "Saved kiosk URL: " + forLog(saved));
-    return saved;
-  }
-
-  /**
-   * The URL without user info, query or fragment, for logcat. Those parts can carry API keys or
-   * tokens, and any app with READ_LOGS (or anyone with ADB) can read the log.
-   */
-  static String forLog(String url) {
-    Uri u = Uri.parse(url);
-    String port = u.getPort() == -1 ? "" : ":" + u.getPort();
-    String path = u.getEncodedPath() == null ? "" : u.getEncodedPath();
-    boolean hidden = u.getEncodedUserInfo() != null || u.getEncodedQuery() != null
-        || u.getEncodedFragment() != null;
-    return u.getScheme() + "://" + u.getHost() + port + path + (hidden ? " (query, fragment or user info not logged)" : "");
-  }
-
-  // Some WebViews report the page's certificate error before onPageStarted, so remember the
-  // page here too.
   private void load(String url) {
-    mainUrl = url;
-    web.loadUrl(url);
+    if (url == null) {
+      offlineTitle.setText("Set up the calendar");
+      offlineText.setText("Open Controls to enter the calendar service address.");
+      offline.setVisibility(View.VISIBLE);
+      return;
+    }
+    if (portalMode) {
+      mainUrl = url;
+      web.loadUrl(url);
+      return;
+    }
+    dashboardReady = false;
+    handler.removeCallbacks(readiness);
+    probeDashboard(true);
   }
 
   private String savedUrl() {
-    return getSharedPreferences(PREFS, MODE_PRIVATE).getString(PREF_URL, DEFAULT_URL);
+    return serviceUrl;
   }
 
-  /**
-   * Answers http://127.0.0.1:8765/<path> from assets/site/<path> (bundled by build.sh from
-   * KIOSK_SITE). Any other URL returns null and goes to the network as usual. Nothing listens on
-   * the port; only this WebView sees these responses. Paths ending in / get index.html.
-   */
-  private WebResourceResponse localAsset(Uri u) {
-    if (u == null || !"http".equalsIgnoreCase(u.getScheme()) || !LOCAL_HOST.equals(u.getHost())
-        || u.getPort() != LOCAL_PORT) return null;
-    String path = u.getPath();
-    if (path == null || path.isEmpty()) path = "/";
-    if (WASTE_PATH.equals(path)) return ottawaWaste(u);
-    if (NETWORK_TIME_PATH.equals(path)) return networkTime();
-    if (CONFIG_PATH.equals(path)) return configResponse();
-    if (UPDATE_STATUS_PATH.equals(path)) return updateStatusResponse();
-    if (UPDATE_UI_PATH.equals(path)) {
-      return jsonResponse(204, "No Content", "", noStoreHeaders());
-    }
-    if (path.endsWith("/")) path += "index.html";
-    Map<String, String> headers = new HashMap<>();
-    headers.put("Cache-Control", "no-cache");
-    if (path.contains("..") || path.contains("//")) {
-      return new WebResourceResponse("text/plain", "utf-8", 404, "Not Found", headers, null);
-    }
-    try {
-      InputStream in = getAssets().open(LOCAL_ASSETS + path);
-      return new WebResourceResponse(mimeFor(path), "utf-8", 200, "OK", headers, in);
-    } catch (IOException e) {
-      Log.w(TAG, "No bundled file for " + path);
-      return new WebResourceResponse("text/plain", "utf-8", 404, "Not Found", headers, null);
-    }
+  private void configureService() {
+    android.widget.EditText input = new android.widget.EditText(this);
+    input.setSingleLine(true);
+    input.setInputType(android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_VARIATION_URI);
+    input.setHint("http://192.168.x.x:8080/");
+    input.setText(serviceUrl == null ? "" : serviceUrl);
+    AlertDialog dialog = new AlertDialog.Builder(this).setTitle("Calendar service address")
+        .setView(input).setNegativeButton("Cancel", null).setPositiveButton("Test and save", null).create();
+    dialog.setOnShowListener(ignored -> dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(button -> {
+      String candidate = ServiceAddress.canonical(input.getText().toString().trim());
+      if (candidate == null) { input.setError("Enter an HTTP address with a private IPv4 address and port."); return; }
+      button.setEnabled(false);
+      healthExecutor.execute(() -> {
+        int health = ServiceAddress.probe(candidate);
+        handler.post(() -> {
+          if (isDestroyed() || !dialog.isShowing()) return;
+          button.setEnabled(true);
+          if (health != ServiceAddress.READY) { input.setError("A compatible Home HQ service did not answer."); return; }
+          if (!ServiceAddress.save(getFilesDir(), candidate)) { input.setError("Could not save the address."); return; }
+          closePortal();
+          serviceUrl = candidate;
+          retryUrl = candidate;
+          dialog.dismiss();
+          load(candidate);
+        });
+      });
+    }));
+    dialog.show();
   }
 
-  private static boolean isLocalPath(Uri uri, String path) {
-    return uri != null && "http".equalsIgnoreCase(uri.getScheme()) && LOCAL_HOST.equals(uri.getHost())
-        && uri.getPort() == LOCAL_PORT && path.equals(uri.getPath())
-        && uri.getQuery() == null && uri.getFragment() == null && uri.getUserInfo() == null;
+  private void probeDashboard(boolean navigation) {
+    if (portalMode || serviceUrl == null) return;
+    final String address = serviceUrl;
+    final int generation = ++probeGeneration;
+    healthExecutor.execute(() -> {
+      int health = ServiceAddress.probe(address);
+      handler.post(() -> {
+        if (isDestroyed() || portalMode || generation != probeGeneration) return;
+        if (health == ServiceAddress.READY) {
+          consecutiveFailures = 0;
+          if (navigation || !dashboardReady) {
+            dashboardReady = true;
+            pageFailed = false;
+            retryPending = false;
+            retryUrl = address;
+            mainUrl = address;
+            web.loadUrl(address);
+          }
+        } else if (navigation || ++consecutiveFailures >= 2 || health == ServiceAddress.INCOMPATIBLE) {
+          dashboardReady = false;
+          web.stopLoading();
+          showOffline();
+          if (health == ServiceAddress.INCOMPATIBLE) {
+            offlineTitle.setText("Calendar service is incompatible");
+            offlineText.setText("Update the calendar service or frame app to a compatible release.");
+          }
+        }
+        handler.removeCallbacks(readiness);
+        handler.postDelayed(readiness, dashboardReady ? 10000L : RETRY_MS);
+      });
+    });
   }
 
-  private static Map<String, String> noStoreHeaders() {
+  private WebResourceResponse deviceResponse(WebResourceRequest request) {
+    Uri uri = request.getUrl();
+    if (portalMode) return null;
+    if (!ServiceAddress.sameOrigin(uri, serviceUrl)) return emptyResponse();
+    if (!dashboardReady || !"GET".equals(request.getMethod()) ||
+        !ServiceAddress.exact(uri, serviceUrl, ServiceAddress.STATUS)) return null;
+    org.json.JSONObject status = UpdateManager.status(this);
+    try { status.put("kioskProtocol", 1); }
+    catch (org.json.JSONException impossible) { throw new AssertionError(impossible); }
     Map<String, String> headers = new HashMap<>();
     headers.put("Cache-Control", "no-store");
-    headers.put("Content-Type", "application/json; charset=utf-8");
     headers.put("X-Content-Type-Options", "nosniff");
-    return headers;
+    return new WebResourceResponse("application/json", "utf-8", 200, "OK", headers,
+        new ByteArrayInputStream(status.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8)));
   }
 
-  private WebResourceResponse configResponse() {
-    return jsonResponse(200, "OK", deviceConfig.publicJson().toString(), noStoreHeaders());
-  }
-
-  private WebResourceResponse updateStatusResponse() {
-    return jsonResponse(200, "OK", UpdateManager.status(this).toString(), noStoreHeaders());
-  }
-
-  /**
-   * Gives the bundled page a trustworthy clock before Android's network-time service has repaired
-   * the frame's 1969 boot date. The connectivity endpoint is intentionally plain HTTP: TLS cannot
-   * be validated while the system date is wrong. Redirects and captive-portal responses are
-   * rejected, and only the standard server Date header is returned.
-   */
-  private WebResourceResponse networkTime() {
-    Map<String, String> headers = new HashMap<>();
-    headers.put("Cache-Control", "no-store");
-    headers.put("Content-Type", "application/json; charset=utf-8");
-    HttpURLConnection c = null;
-    try {
-      c = (HttpURLConnection) new URL(PORTAL_PROBE).openConnection();
-      c.setInstanceFollowRedirects(false);
-      c.setUseCaches(false);
-      c.setConnectTimeout(PROBE_TIMEOUT_MS);
-      c.setReadTimeout(PROBE_TIMEOUT_MS);
-      int status = c.getResponseCode();
-      boolean online = status == 204 || (status == 200 && c.getContentLength() == 0);
-      long epoch = c.getHeaderFieldDate("Date", -1);
-      if (!online || epoch < 1577836800000L) {
-        return jsonResponse(503, "Service Unavailable", "{\"error\":\"Network time unavailable\"}", headers);
-      }
-      return jsonResponse(200, "OK", "{\"epoch\":" + epoch + "}", headers);
-    } catch (IOException e) {
-      Log.w(TAG, "Could not obtain network time", e);
-      return jsonResponse(503, "Service Unavailable", "{\"error\":\"Network time unavailable\"}", headers);
-    } finally {
-      if (c != null) c.disconnect();
-    }
-  }
-
-  /**
-   * Same-origin bridge for Ottawa's official ReCollect schedule. The public API intentionally does
-   * not send browser CORS headers, so JavaScript cannot call it from the bundled localhost site.
-   * Keep the destination fixed here and only accept ISO dates; no arbitrary proxying is possible.
-   */
-  private WebResourceResponse ottawaWaste(Uri request) {
-    Map<String, String> headers = new HashMap<>();
-    headers.put("Cache-Control", "no-store");
-    headers.put("Content-Type", "application/json; charset=utf-8");
-    String after = request.getQueryParameter("after");
-    String before = request.getQueryParameter("before");
-    if (!isoDate(after) || !isoDate(before)) {
-      return jsonResponse(400, "Bad Request", "{\"error\":\"Valid after and before dates are required\"}", headers);
-    }
-    if (!deviceConfig.configured || deviceConfig.wastePlaceId.isEmpty() || deviceConfig.wasteServiceId <= 0) {
-      return jsonResponse(503, "Service Unavailable", "{\"error\":\"Collection is not configured\"}", headers);
-    }
-
-    HttpURLConnection c = null;
-    try {
-      String endpoint = "https://api.recollect.net/api/places/" + deviceConfig.wastePlaceId
-          + "/services/" + deviceConfig.wasteServiceId
-          + "/events?hide=reminder_only&after=" + after + "&before=" + before;
-      c = (HttpURLConnection) new URL(endpoint).openConnection();
-      c.setUseCaches(false);
-      c.setConnectTimeout(12000);
-      c.setReadTimeout(12000);
-      c.setRequestProperty("Accept", "application/json");
-      int status = c.getResponseCode();
-      InputStream source = status >= 200 && status < 400 ? c.getInputStream() : c.getErrorStream();
-      ByteArrayOutputStream bytes = new ByteArrayOutputStream();
-      if (source != null) {
-        byte[] chunk = new byte[8192];
-        int count;
-        while ((count = source.read(chunk)) != -1) bytes.write(chunk, 0, count);
-        source.close();
-      }
-      if (status < 200 || status >= 300) {
-        Log.w(TAG, "Ottawa collection feed answered " + status);
-        return jsonResponse(502, "Bad Gateway", "{\"error\":\"Collection feed unavailable\"}", headers);
-      }
-      return new WebResourceResponse("application/json", "utf-8", 200, "OK", headers,
-          new ByteArrayInputStream(bytes.toByteArray()));
-    } catch (IOException e) {
-      Log.w(TAG, "Could not update Ottawa collection schedule", e);
-      return jsonResponse(503, "Service Unavailable", "{\"error\":\"Collection feed unavailable\"}", headers);
-    } finally {
-      if (c != null) c.disconnect();
-    }
-  }
-
-  private static boolean isoDate(String value) {
-    return value != null && value.matches("\\d{4}-\\d{2}-\\d{2}");
-  }
-
-  private static WebResourceResponse jsonResponse(int status, String reason, String body,
-      Map<String, String> headers) {
-    try {
-      return new WebResourceResponse("application/json", "utf-8", status, reason, headers,
-          new ByteArrayInputStream(body.getBytes("UTF-8")));
-    } catch (java.io.UnsupportedEncodingException impossible) {
-      throw new AssertionError(impossible);
-    }
-  }
-
-  static String mimeFor(String path) {
-    String p = path.toLowerCase(Locale.ROOT);
-    if (p.endsWith(".html") || p.endsWith(".htm")) return "text/html";
-    if (p.endsWith(".js") || p.endsWith(".mjs")) return "text/javascript";
-    if (p.endsWith(".css")) return "text/css";
-    if (p.endsWith(".json")) return "application/json";
-    if (p.endsWith(".svg")) return "image/svg+xml";
-    if (p.endsWith(".png")) return "image/png";
-    if (p.endsWith(".jpg") || p.endsWith(".jpeg")) return "image/jpeg";
-    if (p.endsWith(".webp")) return "image/webp";
-    if (p.endsWith(".gif")) return "image/gif";
-    if (p.endsWith(".woff2")) return "font/woff2";
-    if (p.endsWith(".txt")) return "text/plain";
-    return "application/octet-stream";
+  private static WebResourceResponse emptyResponse() {
+    return new WebResourceResponse("text/plain", "utf-8", 403, "Forbidden",
+        java.util.Collections.emptyMap(), new ByteArrayInputStream(new byte[0]));
   }
 
   private int dp(float v) {
@@ -912,13 +803,14 @@ public class MainActivity extends Activity {
     unregisterReceiver(networkChange);
     if (screenSaver != null) screenSaver.stop();
     handler.removeCallbacksAndMessages(null);
+    healthExecutor.shutdownNow();
     if (web != null) web.destroy();
     super.onDestroy();
   }
 
   /** Remote debugging only when explicitly requested; any normal launch turns it back off. */
   private void applyDebugFlag(Intent intent) {
-    boolean debug = intent != null && intent.getBooleanExtra("debug", false);
+    boolean debug = BuildConfig.DEBUG && intent != null && intent.getBooleanExtra("debug", false);
     WebView.setWebContentsDebuggingEnabled(debug);
     Log.i(TAG, "WebView remote debugging " + (debug ? "ON" : "off"));
   }

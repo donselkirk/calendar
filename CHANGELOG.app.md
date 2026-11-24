@@ -1,4 +1,9 @@
-# Changelog
+# Frame app changelog
+
+## 1.12.0
+
+- Connect the frame to Home HQ with native setup and outage recovery.
+- Keep the screensaver, navigation controls, and signed APK updates on the frame.
 
 ## 1.11.9 - 2026-11-08
 

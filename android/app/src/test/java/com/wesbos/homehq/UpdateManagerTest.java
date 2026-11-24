@@ -3,14 +3,21 @@ package com.wesbos.homehq;
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.assertFalse;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import org.junit.Test;
 
 public class UpdateManagerTest {
+  @Test public void selectsOnlyStableAppReleases() throws Exception {
+    assertTrue(UpdateManager.eligibleRelease(new org.json.JSONObject("{\"tag_name\":\"app-v1.12.1\"}")));
+    assertFalse(UpdateManager.eligibleRelease(new org.json.JSONObject("{\"tag_name\":\"service-v1.12.1\"}")));
+    assertFalse(UpdateManager.eligibleRelease(new org.json.JSONObject("{\"tag_name\":\"v1.12.1\"}")));
+    assertFalse(UpdateManager.eligibleRelease(new org.json.JSONObject("{\"tag_name\":\"app-v1.12.1\",\"prerelease\":true}")));
+  }
   @Test public void enablesValidatedNightlyUpdatesByDefault() {
-    assertTrue(UpdateManager.DEFAULT_AUTO_ENABLED);
+    assertFalse(UpdateManager.DEFAULT_AUTO_ENABLED);
   }
 
   @Test public void archiveCommandUsesOnlyPersistentApplicationData() {

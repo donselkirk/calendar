@@ -12,7 +12,7 @@ final class UpdateScheduler {
   private static final int CHECK_REQUEST = 6101;
   private static final int NIGHT_REQUEST = 6102;
   private static final int NIGHT_RETRY_REQUEST = 6103;
-  private static final String PREF = "updates";
+  private static final String PREF = UpdateManager.PREF;
   private UpdateScheduler() {}
 
   static void schedule(Context context) {

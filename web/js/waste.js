@@ -3,6 +3,7 @@
 // stable place identifier is used at refresh time; the street address is not stored or transmitted.
 (function () {
   'use strict';
+  var Date = App.CalendarDate || globalThis.Date;
   var CACHE_KEY = 'homehq.waste.ottawa.v1';
   var REFRESH_MS = 6 * 60 * 60 * 1000;
   var state = { days: {}, fetchedAt: 0, loading: false, error: false };
@@ -94,19 +95,25 @@
       state.error = true;
       return;
     }
-    return fetch('/__waste?after=' + dateKey(after) + '&before=' + dateKey(before), { cache: 'no-store' })
+    var endpoint = window.HOMEHQ_SERVICE ? '/api/v1/waste' : '/__waste?after=' + dateKey(after) + '&before=' + dateKey(before);
+    return fetch(endpoint, { cache: 'no-store' })
       .then(function (response) {
         if (!response.ok) throw new Error('Collection HTTP ' + response.status);
         return response.json();
       }).then(function (data) {
+        if (window.HOMEHQ_SERVICE) {
+          state.fetchedAt = data.fetchedAt;
+          state.error = data.stale;
+          data = data.data;
+        }
         state.days = parse(data);
-        state.fetchedAt = App.now().getTime();
+        if (!window.HOMEHQ_SERVICE) state.fetchedAt = App.now().getTime();
         state.loading = false;
-        try {
+        if (!window.HOMEHQ_SERVICE) try {
           window.localStorage.setItem(CACHE_KEY, JSON.stringify({ version: 1, fetchedAt: state.fetchedAt, days: state.days }));
         } catch (_err) {}
         App.emit('waste');
-        if (manual) App.toast('Ottawa collection schedule updated', { icon: 'calendar', ms: 2500 });
+        if (manual && !state.error) App.toast('Ottawa collection schedule updated', { icon: 'calendar', ms: 2500 });
       }).catch(function (err) {
         state.loading = false;
         state.error = true;
@@ -120,6 +127,7 @@
     setInterval(function () { App.refreshWaste(false); }, REFRESH_MS);
     window.addEventListener('online', function () { App.refreshWaste(false); });
   });
+  App.wasteStale = function () { return window.HOMEHQ_SERVICE && state.error && state.fetchedAt > 0; };
   // Frames without a clock battery may briefly boot in 1970. Retry as soon as network time moves
   // the calendar to the real date, rather than waiting for the six-hour refresh interval.
   App.on('datechange', function () {
