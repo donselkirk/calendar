@@ -169,7 +169,7 @@ import { TorontoDate, wallTime } from '../toronto.js';
   function monthView() {
     var now = App.now();
     var first = new Date(V.date.getFullYear(), V.date.getMonth(), 1);
-    var start = App.addDays(first, -((first.getDay() + 6) % 7)); // Monday start
+    var start = App.addDays(first, -first.getDay());
     var cells = '';
     for (var i = 0; i < 42; i++) {
       var d = App.addDays(start, i);
@@ -189,7 +189,7 @@ import { TorontoDate, wallTime } from '../toronto.js';
         '<div class="mo-events">' + items +
         (evs.length > 3 ? '<button class="mo-more" data-day="' + (+d) + '">+' + (evs.length - 3) + ' more</button>' : '') + '</div></div>';
     }
-    return '<div class="month"><div class="mo-dow">' + ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(function (d) { return '<span class="label">' + d + '</span>'; }).join('') + '</div>' +
+    return '<div class="month"><div class="mo-dow">' + ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(function (d) { return '<span class="label">' + d + '</span>'; }).join('') + '</div>' +
       '<div class="mo-grid">' + cells + '</div></div>';
   }
 

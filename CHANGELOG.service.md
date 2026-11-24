@@ -3,6 +3,7 @@
 ## 1.0.1
 
 - Create new Home HQ containers with open LAN access, without an allowed-clients prompt or a Proxmox datacenter firewall prerequisite.
+- Start each week on Sunday in the month calendar on desktop and the frame.
 
 ## 1.0.0
 

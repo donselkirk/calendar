@@ -50,6 +50,19 @@ test('month calendar fits the frame and forecast returns to the calendar', async
   await expect(page.locator('.mo-grid')).toBeVisible();
 });
 
+test('aligns month dates under Sunday-first weekday headings', async ({ page }) => {
+  const headings = page.locator('.mo-dow .label');
+  const firstWeek = page.locator('.mo-cell:nth-child(-n+7) .num');
+  await expect(headings).toHaveText(['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']);
+  await expect(page.locator('.cal-title')).toHaveText('November');
+  await expect(firstWeek).toHaveText(['1', '2', '3', '4', '5', '6', '7']);
+
+  await page.locator('[data-nav="1"]').click();
+  await expect(page.locator('.cal-title')).toHaveText('December');
+  await expect(firstWeek).toHaveText(['29', '30', '1', '2', '3', '4', '5']);
+  await expect(page.locator('.mo-cell:nth-child(-n+7).is-out')).toHaveCount(2);
+});
+
 test('forecast rolls forward at Ottawa midnight with a previous-day response', async ({ page }) => {
   await page.locator('[data-forecast]').first().click();
   const today = page.locator('.forecast-today');
