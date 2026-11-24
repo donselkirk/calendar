@@ -3,6 +3,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 pnpm_cmd="${PNPM_CMD:-pnpm}"
 for script in scripts/install-proxmox.sh scripts/install-guest.sh scripts/homehq-service scripts/update; do bash -n "$script"; done
+bash scripts/test-proxmox-installer.sh
 python3 scripts/test-release-assets.py
 bash scripts/test-service-recovery.sh
 bash scripts/test-product-versions.sh
