@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+set -eu
+case "${1:-}" in
+  --check) [[ $# = 1 ]]; exec /usr/local/bin/homehq-service check-update ;;
+  --yes|"") [[ $# -le 1 ]]; exec /usr/local/bin/homehq-service update "$@" ;;
+  *) echo "Usage: update [--check|--yes]" >&2; exit 2 ;;
+esac

@@ -1,36 +1,28 @@
 # Home HQ Calendar
 
-A calendar and Ottawa weather dashboard for a Pastigio M10R7 (Rockchip RK3126C) photo frame running Android 6. The web UI is bundled into a signed kiosk APK and served to its WebView from `http://127.0.0.1:8765/`.
+Home HQ runs on a Proxmox LXC and serves a shared calendar and Ottawa weather dashboard. The Android frame opens the same dashboard as a desktop browser and handles the screensaver, touch, and native controls.
 
-The repository is public. Household names, the address-derived ReCollect identifier, signing keys, APKs, device backups, and serial numbers must never be committed.
+## Install on Proxmox
 
-## Development
+Open the newest stable **Home HQ Service** entry on the [GitHub releases page](https://github.com/donselkirk/calendar/releases). Copy its one-line installer command into the **Proxmox host shell**. The command includes the reviewed commit in both the download URL and the `--ref` argument. Select **Default** or **Advanced**, then confirm the network and storage settings. If you want to preview the changes first, add `--plan`.
 
-Requirements: Node 20+, pnpm 10+, JDK 17, Android SDK platform/build-tools 34, and (for device work) ADB.
+The default is an unprivileged Debian 13 amd64 LXC with 1 CPU, 1 GiB RAM and a 4 GiB disk. Have a free private address, gateway, allowed subnet, and Proxmox storage ready. The Proxmox datacenter firewall must be enabled. Open the printed URL on desktop. On the frame, hold two fingers on the display, choose **Calendar service address**, and enter that same URL.
+
+## Maintain the LXC
+
+Run `update` in the **LXC console**, or run `update --check` to check without applying anything. From the Proxmox host, use `pct exec CTID -- /usr/local/bin/update --check`. See the [deployment runbook](docs/deployment.md) for setup, backups, recovery, and the one-time transfer of existing events.
+
+## Develop
+
+Use Node 24 with pnpm 11.25.0. Android checks also use JDK 17 and Android SDK 34.
 
 ```bash
 pnpm --dir web install --frozen-lockfile
 pnpm --dir web dev
-./scripts/check.sh
+bash scripts/check-service.sh
+bash scripts/check-app.sh
 ```
 
-The local preview is fixed at the frame's 1280×800 viewport. Production JavaScript targets Chrome/WebView 106 and CSS targets Chrome 61 to avoid unsupported minifier output observed on the frame.
+The Vite preview uses disposable browser-local data. To test the production browser-to-service path locally after a web build, point `HOMEHQ_DB` at a new temporary SQLite file, run `node service/server.mjs migrate`, then `node service/server.mjs`. The default URL is `http://127.0.0.1:8080/`.
 
-## Private device configuration
-
-Copy `device-config.example.json` to `device-config.json`, replace the example values, and provision it with:
-
-```bash
-./scripts/provision-device-config.sh device-config.json
-```
-
-The file is stored as `/data/data/com.wesbos.homehq/files/device-config.json`. Stable person IDs must not change after events have been created.
-
-## Releases
-
-Every functional PR bumps `version.properties` and adds a matching `CHANGELOG.md` section. A merge to protected `main` reruns checks and publishes a signed GitHub release. Signing values are supplied only through the `release` GitHub Environment; see `docs/releasing.md`.
-
-The first GitHub-managed release is 1.11.0 (13) and must be installed once through ADB. Later releases are discovered by the native updater.
-
-This project is derived from [wesbos/photo-frame-dashboard](https://github.com/wesbos/photo-frame-dashboard) and retains its MIT license.
-
+Derived from [wesbos/photo-frame-dashboard](https://github.com/wesbos/photo-frame-dashboard) under the MIT license.

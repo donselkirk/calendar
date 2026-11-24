@@ -53,6 +53,11 @@ ul { margin: 0; padding: 0; list-style: none; }
 .views { position: absolute; inset: 0; overflow: hidden; }
 .view { position: absolute; top: 0; right: 0; bottom: 0; left: 0; padding: var(--pad); content-visibility: hidden; z-index: 0; }
 .view.is-active, .view.is-warming { content-visibility: visible; }
+
+.desktop, .desktop body { min-height: 100%; height: auto; overflow: auto; background: var(--paper); }
+.desktop .stage { position: relative; inset: auto; margin: 0 auto; width: 100%; min-width: 620px; min-height: 800px; height: 100vh; }
+.desktop button:focus-visible, .desktop .mo-cell:focus-visible { outline: 2px solid #2d5bff; outline-offset: -2px; }
+.service-unavailable { color: white; padding: 24px; }
 .view.is-active { z-index: 1; }
 .view--bleed { padding: 0; }
 

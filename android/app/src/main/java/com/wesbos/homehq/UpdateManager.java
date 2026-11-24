@@ -27,13 +27,13 @@ final class UpdateManager {
   static final String ACTION_CHECK = "com.wesbos.homehq.CHECK_UPDATE";
   static final String ACTION_INSTALL = "com.wesbos.homehq.INSTALL_UPDATE";
   static final String ACTION_NIGHTLY = "com.wesbos.homehq.NIGHTLY_UPDATE";
-  static final String PREF_AUTO_ENABLED = "auto_updates_enabled";
-  static final boolean DEFAULT_AUTO_ENABLED = true;
+  static final String PREF_AUTO_ENABLED = "split_nightly_enabled";
+  static final boolean DEFAULT_AUTO_ENABLED = false;
   static final String PREF_DEFER_TONIGHT = "defer_update_tonight";
   private static final String TAG = "HomeHQ.Update";
-  private static final String PREF = "updates";
+  static final String PREF = "updates_split";
   private static final String API = "https://api.github.com/repos/" + BuildConfig.GITHUB_OWNER + "/"
-      + BuildConfig.GITHUB_REPO + "/releases/latest";
+      + BuildConfig.GITHUB_REPO + "/releases?per_page=100&page=";
   private static final long MAX_MANIFEST = 64 * 1024;
   private static final long MAX_APK = 100 * 1024 * 1024;
 
@@ -86,43 +86,63 @@ final class UpdateManager {
 
   static void check(Context context) {
     state(context, "checking", "");
-    HttpURLConnection connection = null;
     try {
-      connection = open(API, "application/vnd.github+json");
-      String etag = prefs(context).getString("etag", "");
-      if (!etag.isEmpty()) connection.setRequestProperty("If-None-Match", etag);
-      int status = connection.getResponseCode();
-      if (status == 304) {
-        prefs(context).edit().putLong("lastCheckedAt", System.currentTimeMillis()).putString("state", "idle")
-            .putString("error", "").apply();
-        return;
+      UpdateManifest best = null;
+      String bestUrl = null;
+      for (int page = 1; ; page++) {
+        JSONArray releases = new JSONArray(downloadText(API + page, 4 * 1024 * 1024));
+        for (int i = 0; i < releases.length(); i++) {
+          JSONObject release = releases.getJSONObject(i);
+          String tag = release.optString("tag_name");
+          if (!eligibleRelease(release)) continue;
+          JSONArray assets = release.getJSONArray("assets");
+          String manifestUrl = assetUrl(assets, "app-update-manifest.json");
+          if (manifestUrl == null) continue;
+          try {
+            UpdateManifest manifest = UpdateManifest.parse(downloadText(manifestUrl, MAX_MANIFEST));
+            if (!tag.equals("app-v" + manifest.versionName)
+                || manifest.versionCode <= (best == null ? BuildConfig.VERSION_CODE : best.versionCode)
+                || !normalizeCert(manifest.signingCertSha256).equals(normalizeCert(BuildConfig.SIGNING_CERT_SHA256))) continue;
+            String apkUrl = assetUrl(assets, manifest.apkAsset);
+            if (apkUrl == null) continue;
+            best = manifest;
+            bestUrl = apkUrl;
+          } catch (Exception error) {
+            Log.w(TAG, "An app release could not be verified");
+          }
+        }
+        if (releases.length() < 100) break;
       }
-      if (status != 200) throw new IllegalStateException("GitHub answered " + status);
-      JSONObject release = new JSONObject(read(connection.getInputStream(), 512 * 1024));
-      if (release.optBoolean("draft") || release.optBoolean("prerelease")) throw new IllegalArgumentException("non-final release");
-      JSONArray assets = release.getJSONArray("assets");
-      String manifestUrl = assetUrl(assets, "update-manifest.json");
-      if (manifestUrl == null) throw new IllegalArgumentException("release manifest missing");
-      String manifestBody = downloadText(manifestUrl, MAX_MANIFEST);
-      UpdateManifest manifest = UpdateManifest.parse(manifestBody);
-      if (!normalizeCert(manifest.signingCertSha256).equals(normalizeCert(BuildConfig.SIGNING_CERT_SHA256))) {
-        throw new SecurityException("release signing policy mismatch");
+      SharedPreferences.Editor editor = prefs(context).edit();
+      if (best == null) {
+        editor.remove("versionName").remove("versionCode").remove("apkAsset").remove("apkUrl")
+            .remove("sha256").remove("cert").remove("notes");
+      } else {
+        editor.putString("versionName", best.versionName).putInt("versionCode", best.versionCode)
+            .putString("apkAsset", best.apkAsset).putString("apkUrl", bestUrl)
+            .putString("sha256", best.sha256).putString("cert", best.signingCertSha256)
+            .putString("notes", best.notes);
       }
-      String apkUrl = assetUrl(assets, manifest.apkAsset);
-      if (apkUrl == null) throw new IllegalArgumentException("APK asset missing");
-      prefs(context).edit()
-          .putString("etag", connection.getHeaderField("ETag"))
-          .putString("versionName", manifest.versionName).putInt("versionCode", manifest.versionCode)
-          .putString("apkAsset", manifest.apkAsset).putString("apkUrl", apkUrl)
-          .putString("sha256", manifest.sha256).putString("cert", manifest.signingCertSha256)
-          .putString("notes", manifest.notes).putLong("lastCheckedAt", System.currentTimeMillis())
-          .putString("state", "idle").putString("error", "").apply();
+      editor.putLong("lastCheckedAt", System.currentTimeMillis()).putString("state", "idle").putString("error", "").apply();
     } catch (Exception error) {
       Log.e(TAG, "Update check failed", error);
       state(context, "error", safeError(error));
-    } finally {
-      if (connection != null) connection.disconnect();
     }
+  }
+
+  static boolean eligibleRelease(JSONObject release) {
+    return release.optString("tag_name").matches("app-v[0-9]+\\.[0-9]+\\.[0-9]+")
+        && !release.optBoolean("draft") && !release.optBoolean("prerelease");
+  }
+
+  static void chooseNightly(Activity activity) {
+    boolean enabled = prefs(activity).getBoolean(PREF_AUTO_ENABLED, DEFAULT_AUTO_ENABLED);
+    new AlertDialog.Builder(activity).setTitle("Nightly app updates")
+        .setMessage(enabled ? "Nightly updates are enabled." : "Enable after a manual app update and recovery test.")
+        .setPositiveButton(enabled ? "Disable" : "Enable", (dialog, which) -> {
+          prefs(activity).edit().putBoolean(PREF_AUTO_ENABLED, !enabled).apply();
+          UpdateScheduler.scheduleNightly(activity);
+        }).setNegativeButton("Back", null).show();
   }
 
   static void nightly(Context context) {

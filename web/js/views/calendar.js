@@ -1,6 +1,9 @@
 // Calendar: month-only wall display.
+import { TorontoDate, wallTime } from '../toronto.js';
+
 (function () {
   'use strict';
+  var Date = App.CalendarDate;
   var D = window.DATA;
   var PX = 72, START = 6, END = 23; // 72px per hour, 6 AM → 11 PM
   var V = { mode: 'month', page: 'calendar', date: null, el: null, scroll: null, moving: false };
@@ -177,9 +180,11 @@
         return '<button class="mo-event" data-ev="' + e.id + '" style="' + App.pstyle(App.evColor(e)) + '"><i></i><span>' +
           (e.allDay ? '' : '<b>' + App.fmt.time(e.start, false) + '</b> ') + App.esc(e.title) + '</span></button>';
       }).join('');
-      cells += '<div class="mo-cell' + (d.getMonth() !== first.getMonth() ? ' is-out' : '') + (App.sameDay(d, now) ? ' is-today' : '') + '" data-day="' + (+d) + '">' +
+      cells += '<div class="mo-cell' + (d.getMonth() !== first.getMonth() ? ' is-out' : '') + (App.sameDay(d, now) ? ' is-today' : '') + '" data-day="' + (+d) + '"' +
+        (window.HOMEHQ_SERVICE && !window.HOMEHQ_FRAME ? ' tabindex="0" aria-label="' + App.fmt.month(d) + ' ' + d.getDate() + '"' : '') + '>' +
         '<span class="num">' + d.getDate() + '</span>' +
-        (waste.length ? '<div class="waste-markers">' + waste.map(App.wasteIcon).join('') + '</div>' : '') +
+        (waste.length ? '<div class="waste-markers"' + (App.wasteStale && App.wasteStale() ?
+          ' title="Showing the last saved collection schedule"' : '') + '>' + waste.map(App.wasteIcon).join('') + '</div>' : '') +
         (holidays.length ? '<div class="mo-holiday" title="Ontario public holiday">' + App.holidayIcon() + '<span>' + App.esc(holidays[0].name) + '</span></div>' : '') +
         '<div class="mo-events">' + items +
         (evs.length > 3 ? '<button class="mo-more" data-day="' + (+d) + '">+' + (evs.length - 3) + ' more</button>' : '') + '</div></div>';
@@ -201,13 +206,35 @@
       '<div class="cal-title serif">' + t.t + '</div>' +
       '<button class="icon-btn" data-nav="1" aria-label="Next month">' + App.icon('right', 26) + '</button></div>' +
       '<div class="cal-head-right">' + App.updateMarkup() + '<div class="cal-clock num" id="calendarClock"></div></div>' +
-      (D.configMissing ? '<div class="config-warning" role="status">Device setup required</div>' : '') +
+      (D.configMissing ? '<div class="config-warning" role="status">' + (window.HOMEHQ_SERVICE ?
+        'Household setup required' : 'Device setup required') + '</div>' : '') +
       '</header>';
   }
 
-  function dateFromIso(value) {
-    var parts = String(value || '').split('-');
-    return parts.length === 3 ? new Date(+parts[0], +parts[1] - 1, +parts[2], 12) : new Date(value);
+  function forecastMeasure(value, unit) {
+    return Number.isFinite(value) ? Math.round(value) + unit : '—';
+  }
+
+  function forecastDays(now, daily, condition) {
+    var days = [];
+    for (var i = 1; i <= 7; i++) {
+      var date = new TorontoDate(now);
+      date.setDate(date.getDate() + i);
+      var key = date.toISOString().slice(0, 10);
+      var index = Array.isArray(daily.time) ? daily.time.indexOf(key) : -1;
+      var code = daily.weather_code?.[index];
+      var c = Number.isFinite(code) ? condition(code, true) : { icon: 'cloud', label: 'Unavailable' };
+      var high = forecastMeasure(daily.temperature_2m_max?.[index], '°');
+      var low = forecastMeasure(daily.temperature_2m_min?.[index], '°');
+      var chance = forecastMeasure(daily.precipitation_probability_max?.[index], '%');
+      days.push('<article class="forecast-day"><time class="forecast-day-date" datetime="' + key + '"><b>' +
+        App.fmt.dayShort(date) + '</b><span class="num">' + date.getDate() + '</span></time>' +
+        App.icon(c.icon, 58) + '<strong>' + App.esc(c.label) + '</strong><div class="forecast-day-temp num"><b>' +
+        high + '</b><span>' + low + '</span></div>' +
+        '<div class="forecast-rain">' + App.icon('rain', 18) + '<span class="num">' + chance + '</span></div></article>');
+    }
+    return '<div class="forecast-next"><div class="label">Next seven days</div><div class="forecast-days">' +
+      days.join('') + '</div></div>';
   }
 
   function weatherStat(icon, label, value) {
@@ -222,40 +249,32 @@
   function forecastPage() {
     var weather = App.weatherForecast();
     var data = weather.data;
-    var now = App.now();
+    var now = new TorontoDate(wallTime(App.clockEpoch()));
     var head = '<header class="forecast-head"><button class="btn btn--ghost" data-calendar>' + App.icon('left', 22) + 'Calendar</button>' +
       '<h1 class="serif">Ottawa Weather</h1>' +
       '<button class="btn btn--ghost" data-weather-refresh>' + App.icon('sun', 22) + 'Refresh</button></header>';
-    if (!data || !data.current || !data.daily) {
+    var daily = data && data.daily ? data.daily : {};
+    var next = forecastDays(now, daily, weather.condition);
+    if (!data || !data.current) {
       return '<div class="forecast-page">' + head + '<div class="forecast-empty">' + App.icon('cloud', 72) +
-        '<h2 class="serif">Weather is loading</h2><p>The latest saved Ottawa forecast will appear here.</p></div></div>';
+        '<h2 class="serif">' + (weather.error ? 'Weather unavailable' : 'Weather is loading') + '</h2></div>' + next + '</div>';
     }
     var current = data.current;
-    var daily = data.daily;
     var isDay = Number(current.is_day) === 1;
     var todayCondition = weather.condition(current.weather_code, isDay);
-    var todayHigh = Math.round(Number(daily.temperature_2m_max[0]));
-    var todayLow = Math.round(Number(daily.temperature_2m_min[0]));
-    var rain = Math.round(Number(daily.precipitation_probability_max[0]) || 0);
+    var todayIndex = Array.isArray(daily.time) ? daily.time.indexOf(now.toISOString().slice(0, 10)) : -1;
+    var todayHigh = forecastMeasure(daily.temperature_2m_max?.[todayIndex], '°');
+    var todayLow = forecastMeasure(daily.temperature_2m_min?.[todayIndex], '°');
+    var rain = forecastMeasure(daily.precipitation_probability_max?.[todayIndex], '%');
     var humidity = Math.round(Number(current.relative_humidity_2m) || 0);
     var wind = Math.round(Number(current.wind_speed_10m) || 0);
     var today = '<section class="forecast-today weather-' + todayCondition.scene + ' ' + (isDay ? 'is-day' : 'is-night') + '">' + weatherVideo(todayCondition.scene) +
-      '<div class="forecast-today-copy"><div class="label label--light">Today · ' + App.fmt.day(now) + ', ' + App.fmt.month(now) + ' ' + now.getDate() + '</div>' +
+      '<div class="forecast-today-copy"><div class="label label--light">Today · ' + App.fmt.day(now) + ', ' + App.fmt.month(now) + ' ' + now.getDate() + (weather.error ? ' · Saved reading' : '') + '</div>' +
       '<div class="forecast-now num">' + Math.round(Number(current.temperature_2m)) + '°</div>' +
       '<h2 class="serif">' + App.esc(todayCondition.label) + '</h2><p>Feels like <b class="num">' + Math.round(Number(current.apparent_temperature)) + '°</b></p>' +
-      '<div class="forecast-stats">' + weatherStat('sun', 'High', todayHigh + '°') + weatherStat('moon', 'Low', todayLow + '°') +
-      weatherStat('rain', 'Rain', rain + '%') + weatherStat('drop', 'Humidity', humidity + '%') + weatherStat('wind', 'Wind', wind + ' km/h') + '</div></div></section>';
-    var days = [];
-    for (var i = 1; i < 8; i++) {
-      if (!daily.time || !daily.time[i]) continue;
-      var date = dateFromIso(daily.time[i]);
-      var c = weather.condition(daily.weather_code[i], true);
-      var chance = Math.round(Number(daily.precipitation_probability_max[i]) || 0);
-      days.push('<article class="forecast-day"><div class="forecast-day-date"><b>' + App.fmt.dayShort(date) + '</b><span class="num">' + date.getDate() + '</span></div>' +
-        App.icon(c.icon, 58) + '<strong>' + App.esc(c.label) + '</strong><div class="forecast-day-temp num"><b>' + Math.round(Number(daily.temperature_2m_max[i])) + '°</b><span>' + Math.round(Number(daily.temperature_2m_min[i])) + '°</span></div>' +
-        '<div class="forecast-rain">' + App.icon('rain', 18) + '<span class="num">' + chance + '%</span></div></article>');
-    }
-    return '<div class="forecast-page">' + head + today + '<div class="forecast-next"><div class="label">Next seven days</div><div class="forecast-days">' + days.join('') + '</div></div></div>';
+      '<div class="forecast-stats">' + weatherStat('sun', 'High', todayHigh) + weatherStat('moon', 'Low', todayLow) +
+      weatherStat('rain', 'Rain', rain) + weatherStat('drop', 'Humidity', humidity + '%') + weatherStat('wind', 'Wind', wind + ' km/h') + '</div></div></section>';
+    return '<div class="forecast-page">' + head + today + next + '</div>';
   }
 
   function render() {
@@ -404,14 +423,31 @@
       (e.travel ? '<div class="evs-row evs-leave">' + App.icon('car', 28) + '<div><b>Leave by ' + App.fmt.time(App.leaveBy(e)) + '</b><span>' + e.travel + ' min drive in current traffic</span></div></div>' : '') +
       (e.loc ? '<div class="evs-row">' + App.icon('pin', 28) + '<div><b>' + App.esc(e.loc) + '</b><span>Tap to send directions to phone</span></div></div>' : '') +
       '<div class="evs-row">' + App.icon('person', 28) + '<div class="evs-people">' + (fam ? D.people : e.people.map(App.person)).map(function (x) {
-        return '<span class="chip" style="' + App.pstyle(x) + '">' + App.avatar(x, 32) + x.name + '</span>';
+        return '<span class="chip" style="' + App.pstyle(x) + '">' + App.avatar(x, 32) + App.esc(x.name) + '</span>';
       }).join('') + '</div></div>' +
       (e.notes ? '<div class="evs-notes serif">“' + App.esc(e.notes) + '”</div>' : '') +
       '<div class="sheet-actions"><button class="btn btn--danger" data-delete>Delete ' + (e.seriesId ? 'series' : 'event') + '</button></div>' +
       '</div></div>', { cls: 'sheet--event' });
     var sheet = document.querySelector('.sheet--event');
-    sheet.querySelector('[data-delete]').addEventListener('click', function () {
-      var stored = e.seriesId ? D.events.filter(function (item) { return item.id === e.seriesId; })[0] : e;
+    sheet.querySelector('[data-delete]').addEventListener('click', async function (ev) {
+      var stored = e.seriesId ? D.events.find(function (item) { return item.id === e.seriesId; }) : e;
+      if (window.HOMEHQ_SERVICE) {
+        var button = ev.currentTarget;
+        button.disabled = true;
+        try {
+          var deleted = await App.deleteSharedEvent({ id: e.seriesId || e.id, revision: e.revision });
+          App.closeSheet();
+          App.emit('data');
+          App.toast('Deleted <b>' + App.esc(e.title) + '</b>', {
+            icon: 'calendar', undo: function () { sharedUndo(App.restoreSharedEvent, deleted); }
+          });
+        } catch (error) {
+          button.disabled = false;
+          App.toast(error.status === 409 ? 'This event changed. Reopen it before deleting.' :
+            'Could not delete this event. Check the calendar and try again.', { tone: 'alert' });
+        }
+        return;
+      }
       var index = D.events.indexOf(stored);
       if (index < 0) return;
       D.events.splice(index, 1);
@@ -429,6 +465,15 @@
       });
     });
   };
+
+  async function sharedUndo(action, event) {
+    try {
+      await action(event);
+      App.emit('data');
+    } catch (_error) {
+      App.toast('Could not undo. Check the calendar and try again.', { tone: 'alert' });
+    }
+  }
 
   function moreSheet(ids) {
     var list = ids.map(App.findEvent).filter(Boolean);
@@ -458,8 +503,8 @@
       '<div class="label">New event</div>' +
       '<input class="big-input serif" type="text" enterkeyhint="done" autocomplete="off" placeholder="What’s happening?" data-f="title">' +
       '<div class="chips">' + ideas.map(function (i) { return '<button class="chip chip--ghost" data-idea="' + i + '">' + i + '</button>'; }).join('') + '</div>' +
-      '<div class="label">Calendar</div><div class="add-who"><button class="who-btn is-on" data-who="all" style="' + App.pstyle(D.family) + '">' + App.avatar(D.family, 56) + '<span>Family</span></button>' + D.people.map(function (p) {
-        return '<button class="who-btn" data-who="' + p.id + '" style="' + App.pstyle(p) + '">' + App.avatar(p, 56) + '<span>' + p.name + '</span></button>';
+      '<div class="label">Calendar</div><div class="add-who"><button class="who-btn is-on" data-who="all" style="' + App.pstyle(D.family) + '">' + App.avatar(D.family, 56) + '<span>' + App.esc(D.family.name) + '</span></button>' + D.people.map(function (p) {
+        return '<button class="who-btn" data-who="' + p.id + '" style="' + App.pstyle(p) + '">' + App.avatar(p, 56) + '<span>' + App.esc(p.name) + '</span></button>';
       }).join('') + '</div>' +
       '<div class="label">Event type</div><div class="chips"><button class="chip is-on" data-kind="all-day">All day</button><button class="chip" data-kind="timed">Set a time</button></div>' +
       '<div class="add-row" data-timed-fields hidden><div><div class="label">Time</div><div class="time-picker">' +
@@ -483,7 +528,7 @@
           ev.preventDefault();
           input.blur();
         });
-        s.addEventListener('click', function (ev) {
+        s.addEventListener('click', async function (ev) {
           var t = ev.target.closest('button');
           if (!t) return;
           if (t.dataset.idea) { input.value = t.dataset.idea; }
@@ -525,6 +570,22 @@
             if (!st.allDay) start.setHours(+p[0], +p[1]);
             var end = st.allDay ? App.addDays(start, 1) : new Date(+start + st.dur * 60000);
             var e = { id: D._eid(), title: title, people: who, start: start, end: end, allDay: st.allDay, repeat: st.repeat };
+            if (window.HOMEHQ_SERVICE) {
+              t.disabled = true;
+              try {
+                var created = await App.createSharedEvent(e, s);
+                close();
+                V.date = new Date(start.getFullYear(), start.getMonth(), 1); V.scroll = null;
+                App.emit('data');
+                App.toast('Added <b>' + App.esc(title) + '</b>', {
+                  icon: 'calendar', undo: function () { sharedUndo(App.deleteSharedEvent, created); }
+                });
+              } catch (_error) {
+                t.disabled = false;
+                App.toast('Could not save. The event is still open so you can retry.', { tone: 'alert' });
+              }
+              return;
+            }
             D.events.push(e);
             var saved = App.saveEvents();
             close();
@@ -552,6 +613,11 @@
       if (!V.el) {
         V.el = el;
         el.addEventListener('click', onClick);
+        el.addEventListener('keydown', function (event) {
+          if (!event.target.matches('.mo-cell') || (event.key !== 'Enter' && event.key !== ' ')) return;
+          event.preventDefault();
+          event.target.click();
+        });
         swipe(el);
       }
       if (!V.date) V.date = App.dayStart(App.now());
@@ -573,5 +639,8 @@
   });
   App.on('weather', function () { if (V.el) render(); });
   App.on('waste', function () { if (V.el) render(); });
+  App.on('data', function () {
+    if (window.HOMEHQ_SERVICE && V.el && V.page === 'calendar') render();
+  });
   App.on('update', function () { if (V.el) render(); });
 })();

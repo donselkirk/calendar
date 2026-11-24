@@ -1,5 +1,7 @@
 import { expect, test } from '@playwright/test';
 
+test.use({ timezoneId: 'America/Toronto' });
+
 const config = {
   schemaVersion: 1, configured: true, familyLabel: 'Family', wasteEnabled: true,
   people: [
@@ -9,6 +11,10 @@ const config = {
 };
 
 test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => {
+    window.calendarTestEpoch = Date.parse('2026-11-07T17:00:00Z');
+    Date.now = () => window.calendarTestEpoch;
+  });
   await page.route('**/__config', (route) => route.fulfill({ json: config }));
   await page.route('**/__update_status', (route) => route.fulfill({ json: { available: false, state: 'idle' } }));
   await page.route('**/__waste**', (route) => route.fulfill({ json: { events: [] } }));
@@ -37,8 +43,28 @@ test('month calendar fits the frame and forecast returns to the calendar', async
   await expect(page.locator('.forecast-today-icon')).toHaveCount(0);
   await expect(page.locator('.forecast-day')).toHaveCount(7);
   await expect(page.locator('.forecast-rain')).toHaveCount(7);
+  const dates = page.locator('.forecast-day time');
+  await expect(dates.first()).toHaveAttribute('datetime', '2026-11-08');
+  await expect(dates.last()).toHaveAttribute('datetime', '2026-11-14');
   await page.locator('[data-calendar]').click();
   await expect(page.locator('.mo-grid')).toBeVisible();
+});
+
+test('forecast rolls forward at Ottawa midnight with a previous-day response', async ({ page }) => {
+  await page.locator('[data-forecast]').first().click();
+  const today = page.locator('.forecast-today');
+  const days = page.locator('.forecast-day');
+  await expect(today).toContainText('November 7');
+  await expect(today.locator('.forecast-stat').first()).toContainText('9°');
+  await page.evaluate(() => { window.calendarTestEpoch = Date.parse('2026-11-08T05:01:00Z'); });
+  await expect(today).toContainText('November 8');
+  await expect(today.locator('.forecast-stat').first()).toContainText('10°');
+  await expect(days).toHaveCount(7);
+  await expect(days.first().locator('time')).toHaveAttribute('datetime', '2026-11-09');
+  await expect(days.first().locator('.forecast-rain')).toContainText('20%');
+  await expect(days.last().locator('time')).toHaveAttribute('datetime', '2026-11-15');
+  await expect(days.last()).toContainText('Unavailable');
+  await expect(days.last().locator('.forecast-rain')).toContainText('—');
 });
 
 test('arrows plus mouse and Android-style touch swipes slide between months', async ({ page }) => {
@@ -108,7 +134,10 @@ test('timed event stepper exposes large left and right tap targets', async ({ pa
   await expect(title).not.toBeFocused();
   await expect(title).toHaveValue('Doctor');
   await page.locator('[data-save]').click();
-  const event = await page.evaluate(() => JSON.parse(localStorage.getItem('homehq.local.calendar.v1')).events[0]);
-  expect(new Date(event.start).getHours()).toBe(23);
-  expect(new Date(event.start).getMinutes()).toBe(30);
+  const time = await page.evaluate(() => {
+    const event = JSON.parse(localStorage.getItem('homehq.local.calendar.v1')).events[0];
+    const start = new Date(event.start);
+    return [start.getHours(), start.getMinutes()];
+  });
+  expect(time).toEqual([23, 30]);
 });

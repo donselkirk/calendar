@@ -1,0 +1,175 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+umask 027
+root=/opt/homehq
+data=/var/lib/homehq
+db="$data/homehq.sqlite3"
+state="$root/state"
+helper=/usr/local/lib/homehq/release-assets.py
+unit=homehq.service
+config=/etc/homehq/config.json
+flag="$state/maintenance"
+active="$root/current"
+journal="$state/transaction"
+recovery="$state/recovery"
+repo=donselkirk/calendar
+source /usr/local/lib/homehq/service-recovery.sh
+
+[[ $EUID = 0 ]] || { echo "Run this command as root or with sudo." >&2; exit 1; }
+install -d -m 0750 -g homehq "$root" "$root/releases" "$state"
+exec 9>"$state/lock"
+flock -n 9 || { echo "Another Home HQ maintenance command is running." >&2; exit 1; }
+temp=$(mktemp -d "$state/work.XXXXXXXX")
+chmod 0750 "$temp"
+chgrp homehq "$temp"
+worker=
+trap 'if [[ -n $worker ]]; then kill "$worker" 2>/dev/null || true; wait "$worker" 2>/dev/null || true; fi; rm -r -- "$temp"' EXIT
+
+version_at() {
+  if [[ -f "$1/service/version.properties" ]]; then sed -n 's/^VERSION_NAME=//p' "$1/service/version.properties"; fi
+}
+release_info() {
+  python3 "$helper" metadata > "$temp/release"
+  mapfile -t info < "$temp/release"
+  available=${info[0]}
+  artifact=${info[1]}
+  digest=${info[2]}
+  commit=${info[3]}
+  url=${info[4]}
+  current=$(version_at "$active")
+  printf 'Installed: %s\nAvailable: %s\n' "${current:-none}" "$available"
+}
+download() {
+  local tagged
+  tagged=$(git ls-remote "https://github.com/$repo.git" "refs/tags/service-v$available" "refs/tags/service-v$available^{}" |
+    awk 'NR==1 {sha=$1} /\^\{\}$/ {sha=$1} END {print sha}')
+  [[ $tagged = "$commit" ]] || { echo "Release tag and manifest disagree." >&2; return 1; }
+  curl -fsSL --proto '=https' --max-time 240 --max-filesize 200000000 "$url/$artifact" -o "$temp/$artifact"
+  curl -fsSL --proto '=https' --max-time 30 --max-filesize 2000000 "$url/$artifact.attestation.jsonl" -o "$temp/provenance"
+  printf '%s  %s\n' "$digest" "$temp/$artifact" | sha256sum -c -
+  /usr/local/lib/homehq/gh attestation verify "$temp/$artifact" --bundle "$temp/provenance" --repo "$repo" \
+    --signer-workflow "$repo/.github/workflows/service-release.yml" --source-ref refs/heads/main \
+    --source-digest "$commit" --deny-self-hosted-runners
+  mkdir -m 0755 "$temp/release-files"
+  python3 "$helper" unpack "$temp/$artifact" "$temp/release-files"
+  chgrp -R homehq "$temp/release-files"
+  [[ $(version_at "$temp/release-files") = "$available" ]]
+  [[ -x "$temp/release-files/node" && -f "$temp/release-files/web/dist/index.html" ]]
+}
+stage_database() {
+  install -d -m 0750 -o homehq -g homehq "$temp/trial"
+  install -d -m 0750 "$temp/snapshot"
+  if [[ -e $db ]]; then
+    sqlite3 "$db" ".backup '$temp/snapshot/previous.sqlite3'"
+    [[ $(sqlite3 "$temp/snapshot/previous.sqlite3" 'PRAGMA quick_check') = ok ]]
+    install -m 0640 -o homehq -g homehq "$temp/snapshot/previous.sqlite3" "$temp/trial/homehq.sqlite3"
+  else
+    touch "$temp/snapshot/no-database"
+  fi
+}
+test_candidate() {
+  local release="$1" trial="$temp/trial/homehq.sqlite3"
+  runuser -u homehq -- env HOMEHQ_CONFIG="$config" HOMEHQ_DB="$trial" \
+    "$release/node" "$release/service/server.mjs" migrate
+  runuser -u homehq -- env HOMEHQ_CONFIG="$config" HOMEHQ_DB="$trial" HOMEHQ_LISTEN=127.0.0.1 \
+    HOMEHQ_PORT=18081 \
+    "$release/node" "$release/service/server.mjs" &
+  worker=$!
+  for _ in {1..20}; do
+    if curl -fsS --max-time 1 http://127.0.0.1:18081/readyz | grep -q '"kioskProtocol":1' &&
+       curl -fsS --max-time 1 http://127.0.0.1:18081/api/v1/events > /dev/null &&
+       curl -fsS --max-time 1 http://127.0.0.1:18081/ > /dev/null; then
+      kill "$worker"
+      wait "$worker" || true
+      worker=
+      [[ $(sqlite3 "$trial" 'PRAGMA wal_checkpoint(TRUNCATE);' | cut -d '|' -f1) = 0 ]]
+      return
+    fi
+    kill -0 "$worker" 2>/dev/null || break
+    sleep 1
+  done
+  echo "Candidate did not pass its readiness checks." >&2
+  return 1
+}
+promote() {
+  local target=$1 old=$2
+  install -m 0640 -o homehq -g homehq "$temp/trial/homehq.sqlite3" "$data/staged.sqlite3"
+  rm -f -- "$db-wal" "$db-shm"
+  mv -f "$data/staged.sqlite3" "$db"
+  switch_to "$target"
+  sync -f "$data"
+  sync -f "$root"
+  systemctl start "$unit"
+  wait_health "$target"
+  printf '%s\n' "$old" > "$temp/previous"
+  mv -f "$temp/previous" "$state/previous"
+  finish_maintenance
+  echo "Home HQ $target is running at $(address)/"
+}
+address() {
+  python3 -c 'import json,sys; c=json.load(open(sys.argv[1])); print("http://%s:%s" % (c["host"], c.get("port",8080)))' "$config"
+}
+prepare_transaction() {
+  # A completed transaction can leave its journal behind if power was lost
+  # after writes reopened. Persist its removal before creating a new marker.
+  rm -f -- "$journal"
+  sync -f "$state"
+  touch "$flag"
+  sync -f "$state"
+  systemctl stop "$unit"
+  stage_database
+  if [[ -d $recovery ]]; then mv "$recovery" "$temp/prior-recovery"; fi
+  mv "$temp/snapshot" "$recovery"
+  printf '%s\n' "${current:-none}" > "$temp/journal"
+  mv "$temp/journal" "$journal"
+  sync -f "$state"
+}
+case "${1:-status}" in
+  status|doctor)
+    printf 'Version: %s\nURL: %s/\n' "$(version_at "$active")" "$(address)"
+    if [[ -f $flag ]]; then echo "Maintenance active. Run homehq-service rollback to recover."; exit 1; fi
+    curl -fsS --max-time 5 "$(address)/readyz"; echo
+    if [[ ${1:-} = doctor ]]; then sqlite3 "$db" 'PRAGMA quick_check'; journalctl -u "$unit" -n 15 --no-pager; fi
+    ;;
+  check-update|update)
+    [[ ${2:-} = "" || ${2:-} = --yes ]] || { echo "Usage: update [--check|--yes]"; exit 2; }
+    if [[ -f $flag ]]; then echo "Maintenance active. Run homehq-service rollback to recover."; exit 1; fi
+    release_info
+    if [[ -n $current && $(printf '%s\n' "$current" "$available" | sort -V | tail -1) = "$current" ]]; then
+      echo "Home HQ is up to date."; exit 0
+    fi
+    python3 "$helper" notes "$temp/release"
+    [[ $1 != check-update ]] || exit 0
+    if [[ ${2:-} != --yes ]]; then
+      read -r -p "Install Home HQ $available? [y/N] " answer
+      [[ $answer =~ ^[yY]$ ]] || exit 0
+    fi
+    download
+    if [[ ! -d "$root/releases/$available" ]]; then mv "$temp/release-files" "$root/releases/$available"; fi
+    trap 'if ((BASH_SUBSHELL == 0)); then failure; fi' ERR
+    prepare_transaction
+    test_candidate "$root/releases/$available"
+    promote "$available" "${current:-none}"
+    ;;
+  rollback)
+    if [[ -f $flag ]]; then
+      if [[ -f $journal ]]; then recover
+      else resume_unmodified "$(version_at "$active")"
+      fi
+      exit
+    fi
+    [[ -f "$state/previous" ]] || { echo "No previous release."; exit 1; }
+    read -r previous < "$state/previous"
+    current=$(version_at "$active")
+    [[ $previous != none && $previous =~ ^[0-9]+\.[0-9]+\.[0-9]+$ && -n $current ]]
+    trap 'if ((BASH_SUBSHELL == 0)); then failure; fi' ERR
+    prepare_transaction
+    # Opening without migration must accept the live schema before testing a downgrade.
+    runuser -u homehq -- "$root/releases/$previous/node" --input-type=module -e \
+      'const {openDatabase}=await import(process.argv[1]); openDatabase(process.argv[2]).close()' \
+      "$root/releases/$previous/service/db.mjs" "$temp/trial/homehq.sqlite3"
+    test_candidate "$root/releases/$previous"
+    promote "$previous" "$current"
+    ;;
+  *) echo "Usage: homehq-service {status|doctor|check-update|update|rollback}" >&2; exit 2 ;;
+esac

@@ -1,0 +1,73 @@
+name: Frame app release
+
+on:
+  push:
+    branches: [main]
+    paths: [android/version.properties]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: app-release-main
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3
+        with:
+          distribution: temurin
+          java-version: 17
+          cache: gradle
+      - run: bash scripts/privacy-scan.sh
+      - env:
+          RELEASING: 1
+          BEFORE: ${{ github.event.before }}
+        run: bash scripts/validate-version.sh app "$BEFORE"
+      - run: bash scripts/check-app.sh
+  publish:
+    needs: verify
+    runs-on: ubuntu-24.04
+    environment: release
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3
+        with:
+          distribution: temurin
+          java-version: 17
+          cache: gradle
+      - name: Restore and verify signing keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.HOMEHQ_KEYSTORE_BASE64 }}
+          HOMEHQ_KEYSTORE_PASSWORD: ${{ secrets.HOMEHQ_KEYSTORE_PASSWORD }}
+          HOMEHQ_KEY_ALIAS: ${{ secrets.HOMEHQ_KEY_ALIAS }}
+          HOMEHQ_KEYSTORE_PATH: ${{ runner.temp }}/homehq-signing/homehq.jks
+        run: |
+          umask 077
+          mkdir -p "$(dirname "$HOMEHQ_KEYSTORE_PATH")"
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$HOMEHQ_KEYSTORE_PATH"
+          bash scripts/verify-keystore.sh
+      - name: Build and verify signed APK
+        env:
+          HOMEHQ_KEYSTORE_PATH: ${{ runner.temp }}/homehq-signing/homehq.jks
+          HOMEHQ_KEYSTORE_PASSWORD: ${{ secrets.HOMEHQ_KEYSTORE_PASSWORD }}
+          HOMEHQ_KEY_ALIAS: ${{ secrets.HOMEHQ_KEY_ALIAS }}
+          HOMEHQ_KEY_PASSWORD: ${{ secrets.HOMEHQ_KEY_PASSWORD }}
+        run: |
+          ./gradlew lintRelease assembleRelease
+          bash scripts/verify-apk.sh android/app/build/outputs/apk/release/app-release.apk
+          bash scripts/package-app.sh
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="$(sed -n 's/^VERSION_NAME=//p' android/version.properties)"
+          bash scripts/changelog-section.sh "$version" app > "$RUNNER_TEMP/app-notes.md"
+          gh release create "app-v$version" artifacts/"app-v$version"/* --target "$GITHUB_SHA" \
+            --title "Home HQ Frame $version" --notes-file "$RUNNER_TEMP/app-notes.md" --latest=false

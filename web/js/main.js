@@ -11,14 +11,36 @@ function validConfig(value) {
 }
 
 async function boot() {
+  var preview = import.meta.env.DEV || import.meta.env.MODE === 'preview';
   try {
-    var response = await fetch('/__config', { cache: 'no-store' });
+    var response = await fetch(preview ? '/__config' : '/api/v1/bootstrap', { cache: 'no-store' });
     var config = response.ok ? await response.json() : null;
     if (validConfig(config)) window.DEVICE_CONFIG = config;
+    if (!preview && !validConfig(config)) throw new Error('Service unavailable');
   } catch (_err) {
-    // Browser previews and unprovisioned frames intentionally use the safe generic configuration.
+    if (!preview) {
+      document.body.textContent = '';
+      var retry = document.createElement('button');
+      retry.className = 'service-unavailable';
+      retry.textContent = 'Calendar unavailable · Retry';
+      retry.onclick = function () { window.location.reload(); };
+      document.body.appendChild(retry);
+      return;
+    }
+  }
+  window.HOMEHQ_SERVICE = !preview;
+  if (!preview) {
+    try {
+      var status = await fetch('/__device/v1/status', { cache: 'no-store' });
+      window.HOMEHQ_FRAME = status.ok && (await status.json()).kioskProtocol === 1;
+    } catch (_err) { window.HOMEHQ_FRAME = false; }
+    if (!window.HOMEHQ_FRAME) {
+      document.documentElement.classList.add('desktop');
+      document.querySelector('meta[name=viewport]').setAttribute('content', 'width=device-width, initial-scale=1');
+    }
   }
   await import('./app.js');
+  if (!preview) await import('./service-events.js');
   await import('./holidays.js');
   await import('./weather.js');
   await import('./waste.js');

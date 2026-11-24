@@ -19,4 +19,7 @@ device-config.*.json
 *.tgz
 *.zip
 local.properties
+*.sqlite3
+*.sqlite3-*
+legacy-events*.json
 

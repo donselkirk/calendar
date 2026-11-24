@@ -1,0 +1,22 @@
+[Unit]
+Description=Home HQ Calendar
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=homehq
+Group=homehq
+WorkingDirectory=/opt/homehq/current
+Environment=HOMEHQ_MAINTENANCE=/opt/homehq/state/maintenance
+ExecStart=/opt/homehq/current/node /opt/homehq/current/service/server.mjs
+Restart=on-failure
+UMask=0027
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/homehq
+
+[Install]
+WantedBy=multi-user.target

@@ -8,7 +8,7 @@ plugins {
 jacoco { toolVersion = "0.8.12" }
 
 def versions = new Properties()
-rootProject.file("version.properties").withInputStream { versions.load(it) }
+rootProject.file("android/version.properties").withInputStream { versions.load(it) }
 def releasePolicy = new Properties()
 rootProject.file("release.properties").withInputStream { releasePolicy.load(it) }
 
@@ -57,8 +57,11 @@ android {
     targetCompatibility JavaVersion.VERSION_1_8
   }
 
-  sourceSets.main.assets.srcDirs = ["src/main/assets", layout.buildDirectory.dir("generated/assets")]
   testOptions.unitTests.includeAndroidResources = true
+  lint {
+    // This kiosk APK is sideloaded on an Android 6 frame and is not published to Play.
+    disable "ExpiredTargetSdkVersion"
+  }
   buildFeatures.buildConfig = true
 }
 
@@ -67,18 +70,6 @@ dependencies {
   testImplementation "org.robolectric:robolectric:4.16.1"
   testImplementation "org.json:json:20240303"
 }
-
-tasks.register("bundleWeb", Copy) {
-  doFirst {
-    if (!rootProject.file("web/dist/index.html").exists()) {
-      throw new GradleException("web/dist is missing; run pnpm --dir web build first")
-    }
-  }
-  from rootProject.file("web/dist")
-  into layout.buildDirectory.dir("generated/assets/site")
-}
-
-tasks.named("preBuild").configure { dependsOn("bundleWeb") }
 
 def nativeCoverageClasses = fileTree(layout.buildDirectory.dir("intermediates/javac/debug/compileDebugJavaWithJavac/classes")) {
   include "com/wesbos/homehq/DisplayPolicy.class"

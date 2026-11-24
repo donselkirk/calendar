@@ -23,7 +23,8 @@
   };
 
   App.refreshUpdateStatus = function () {
-    return fetch('/__update_status', { cache: 'no-store' }).then(function (response) {
+    if (window.HOMEHQ_SERVICE && !window.HOMEHQ_FRAME) return;
+    return fetch(window.HOMEHQ_SERVICE ? '/__device/v1/status' : '/__update_status', { cache: 'no-store' }).then(function (response) {
       if (!response.ok) throw new Error('status unavailable');
       return response.json();
     }).then(function (value) {
@@ -36,7 +37,7 @@
     });
   };
 
-  App.openUpdate = function () { window.location.href = '/__update_ui'; };
+  App.openUpdate = function () { window.location.href = window.HOMEHQ_SERVICE ? '/__device/v1/update' : '/__update_ui'; };
   App.on('ready', function () {
     App.refreshUpdateStatus();
     setInterval(App.refreshUpdateStatus, 60 * 1000);

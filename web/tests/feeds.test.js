@@ -53,6 +53,8 @@ describe('official calendar feeds', () => {
     expect(app.weatherForecast().condition(0, false).icon).toBe('moon');
     expect(app.weatherMarkup()).toContain('Ottawa · Clear');
     expect(JSON.parse(localStorage.getItem('homehq.weather.ottawa.v1')).data.current.temperature_2m).toBe(4);
+    app.emit('datechange');
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
   });
 
   it('retains cached weather and collection data across network errors', async () => {
