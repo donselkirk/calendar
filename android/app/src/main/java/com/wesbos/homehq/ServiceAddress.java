@@ -39,15 +39,30 @@ final class ServiceAddress {
   }
 
   static boolean sameOrigin(Uri uri, String address) {
-    if (uri == null || address == null) return false;
-    Uri base = Uri.parse(address);
-    return "http".equals(uri.getScheme()) && base.getHost().equals(uri.getHost())
-        && base.getPort() == uri.getPort() && uri.getUserInfo() == null;
+    return uri != null && sameOrigin(parse(uri.toString()), address);
   }
 
   static boolean exact(Uri uri, String address, String path) {
-    return sameOrigin(uri, address) && path.equals(uri.getEncodedPath())
-        && uri.getEncodedQuery() == null && uri.getEncodedFragment() == null;
+    return uri != null && exact(uri.toString(), address, path);
+  }
+
+  static boolean exact(String candidate, String address, String path) {
+    URI uri = parse(candidate);
+    return sameOrigin(uri, address) && path.equals(uri.getRawPath())
+        && uri.getRawQuery() == null && uri.getRawFragment() == null;
+  }
+
+  private static boolean sameOrigin(URI uri, String address) {
+    URI base = parse(address);
+    return uri != null && base != null && "http".equals(uri.getScheme())
+        && base.getHost().equals(uri.getHost()) && base.getPort() == uri.getPort()
+        && uri.getRawUserInfo() == null;
+  }
+
+  private static URI parse(String address) {
+    if (address == null) return null;
+    try { return new URI(address); }
+    catch (java.net.URISyntaxException error) { return null; }
   }
 
   static String load(File dir) {

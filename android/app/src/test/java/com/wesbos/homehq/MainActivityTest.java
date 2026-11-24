@@ -4,12 +4,8 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
-import android.net.Uri;
 import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.robolectric.RobolectricTestRunner;
 
-@RunWith(RobolectricTestRunner.class)
 public class MainActivityTest {
   @Test public void acceptsOnlyExplicitPrivateServiceAddress() {
     assertEquals("http://192.168.50.2:8080/", ServiceAddress.canonical("http://192.168.50.2:8080"));
@@ -19,12 +15,14 @@ public class MainActivityTest {
     assertNull(ServiceAddress.canonical("http://192.168.50.2:8080/?x=y"));
   }
 
-  @Test public void opensOnlyExactMainFrameUpdateNavigation() {
+  @Test public void checksExactUpdateNavigationOriginAndPath() {
     String address = "http://192.168.50.2:8080/";
-    assertTrue(ServiceAddress.exact(Uri.parse(address + "__device/v1/update"), address, ServiceAddress.UPDATE));
-    assertFalse(ServiceAddress.exact(Uri.parse(address + "__device/v1/update?x=y"), address, ServiceAddress.UPDATE));
-    assertFalse(ServiceAddress.exact(Uri.parse(address + "__device/v1/%75pdate"), address, ServiceAddress.UPDATE));
-    assertFalse(ServiceAddress.exact(Uri.parse("http://192.168.50.3:8080/__device/v1/update"),
+    assertTrue(ServiceAddress.exact(address + "__device/v1/update", address, ServiceAddress.UPDATE));
+    assertFalse(ServiceAddress.exact(address + "__device/v1/update?x=y", address, ServiceAddress.UPDATE));
+    assertFalse(ServiceAddress.exact(address + "__device/v1/%75pdate", address, ServiceAddress.UPDATE));
+    assertFalse(ServiceAddress.exact("http://192.168.50.3:8080/__device/v1/update",
+        address, ServiceAddress.UPDATE));
+    assertFalse(ServiceAddress.exact("http://192.168.50.2:8080@192.168.50.3/__device/v1/update",
         address, ServiceAddress.UPDATE));
   }
 }
