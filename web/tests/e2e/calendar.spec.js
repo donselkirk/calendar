@@ -134,7 +134,10 @@ test('timed event stepper exposes large left and right tap targets', async ({ pa
   await expect(title).not.toBeFocused();
   await expect(title).toHaveValue('Doctor');
   await page.locator('[data-save]').click();
-  const event = await page.evaluate(() => JSON.parse(localStorage.getItem('homehq.local.calendar.v1')).events[0]);
-  expect(new Date(event.start).getHours()).toBe(23);
-  expect(new Date(event.start).getMinutes()).toBe(30);
+  const time = await page.evaluate(() => {
+    const event = JSON.parse(localStorage.getItem('homehq.local.calendar.v1')).events[0];
+    const start = new Date(event.start);
+    return [start.getHours(), start.getMinutes()];
+  });
+  expect(time).toEqual([23, 30]);
 });
