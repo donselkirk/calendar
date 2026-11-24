@@ -7,7 +7,7 @@
     '?latitude=45.4215&longitude=-75.6972' +
     '&current=temperature_2m,apparent_temperature,relative_humidity_2m,wind_speed_10m,is_day,weather_code' +
     '&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,sunrise,sunset' +
-    '&temperature_unit=celsius&wind_speed_unit=kmh&timezone=auto&forecast_days=8';
+    '&temperature_unit=celsius&wind_speed_unit=kmh&timezone=America%2FToronto&forecast_days=8';
   var state = { data: null, fetchedAt: 0, loading: false, error: false };
 
   try {
@@ -91,4 +91,5 @@
     App.refreshWeather(false);
     setInterval(function () { App.refreshWeather(false); }, 30 * 60 * 1000);
   });
+  App.on('datechange', function () { App.refreshWeather(false); });
 })();

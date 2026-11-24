@@ -10,6 +10,10 @@ export function wallTime(epoch) {
   return Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second, epoch % 1000);
 }
 
+export function torontoDay(epoch) {
+  return new Date(wallTime(epoch)).toISOString().slice(0, 10);
+}
+
 // Prefer the first occurrence during fall-back and move forward through a spring gap.
 export function instant(wall) {
   const offsets = [-86400000, 86400000].map(delta => wallTime(wall + delta) - (wall + delta));

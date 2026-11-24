@@ -9,6 +9,7 @@ import { readConfig } from './config.mjs';
 import { openDatabase, events } from './db.mjs';
 import { makeServer } from './server.mjs';
 import { importLegacy } from './import.mjs';
+import { feeds } from './feeds.mjs';
 import { instant, wallTime, eventToWire, TorontoDate } from '../web/js/toronto.js';
 
 const sample = { title: 'Example', people: ['person-1'], allDay: true, repeat: 'yearly',
@@ -21,6 +22,25 @@ async function fixture(t) {
   const config = readConfig(join(dir, 'missing-config'));
   return { dir, file, db, config };
 }
+
+test('weather cache refreshes at Toronto midnight even before its normal expiry', async t => {
+  const { db, config } = await fixture(t);
+  t.after(() => db.close());
+  let time = Date.parse('2026-11-24T04:55:00Z');
+  t.mock.method(Date, 'now', () => time);
+  let requests = 0;
+  const weather = feeds(db, config, async () => {
+    requests++;
+    const day = requests === 1 ? '2026-11-23' : '2026-11-24';
+    return Response.json({ current: { temperature_2m: 4 }, daily: { time: [day], temperature_2m_max: [6] } });
+  }).weather;
+  assert.equal((await weather()).data.daily.time[0], '2026-11-23');
+  time = Date.parse('2026-11-24T04:59:59Z');
+  assert.equal((await weather()).data.daily.time[0], '2026-11-23');
+  time = Date.parse('2026-11-24T05:00:00Z');
+  assert.equal((await weather()).data.daily.time[0], '2026-11-24');
+  assert.equal(requests, 2);
+});
 
 test('HTTP contract shares data, rejects cross-origin writes and supports recovery checks', async t => {
   const { dir, db, config } = await fixture(t);

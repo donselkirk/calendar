@@ -1,3 +1,5 @@
+import { torontoDay } from '../web/js/toronto.js';
+
 const weatherUrl = 'https://api.open-meteo.com/v1/forecast?latitude=45.4215&longitude=-75.6972' +
   '&current=temperature_2m,apparent_temperature,relative_humidity_2m,wind_speed_10m,is_day,weather_code' +
   '&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,sunrise,sunset' +
@@ -6,14 +8,18 @@ const weatherUrl = 'https://api.open-meteo.com/v1/forecast?latitude=45.4215&long
 export function feeds(db, config, request = fetch) {
   const pending = new Map();
   const failedAt = new Map();
-  async function refresh(key, url, interval, normalize) {
+  async function refresh(key, url, interval, normalize, sameDay = false) {
     const cached = db.prepare('SELECT * FROM cache WHERE key=?').get(key);
-    if (cached && Date.now() - cached.fetched < interval) {
+    const now = Date.now();
+    if (cached && now - cached.fetched < interval &&
+        (!sameDay || torontoDay(now) === torontoDay(cached.fetched))) {
       return { data: JSON.parse(cached.value), fetchedAt: cached.fetched, stale: false };
     }
     if (pending.has(key)) return pending.get(key);
     const stale = () => ({ data: cached ? JSON.parse(cached.value) : null, fetchedAt: cached?.fetched ?? 0, stale: true });
-    if (Date.now() - (failedAt.get(key) ?? 0) < 60_000) return stale();
+    const lastFailure = failedAt.get(key);
+    if (lastFailure !== undefined && now - lastFailure < 60_000 &&
+        (!sameDay || torontoDay(now) === torontoDay(lastFailure))) return stale();
     const task = (async () => {
       try {
         const response = await request(url, { signal: AbortSignal.timeout(8000), redirect: 'error' });
@@ -33,7 +39,8 @@ export function feeds(db, config, request = fetch) {
   }
   return {
     weather: () => refresh('weather', weatherUrl, 30 * 60_000,
-      data => Number.isFinite(data?.current?.temperature_2m) && Array.isArray(data?.daily?.temperature_2m_max) ? data : null),
+      data => Number.isFinite(data?.current?.temperature_2m) && Array.isArray(data?.daily?.temperature_2m_max) ? data : null,
+      true),
     waste() {
       const waste = config.waste;
       if (!waste) return { data: null, fetchedAt: 0, stale: true };

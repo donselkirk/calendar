@@ -1,4 +1,6 @@
 // Calendar: month-only wall display.
+import { TorontoDate, wallTime } from '../toronto.js';
+
 (function () {
   'use strict';
   var Date = App.CalendarDate;
@@ -209,9 +211,30 @@
       '</header>';
   }
 
-  function dateFromIso(value) {
-    var parts = String(value || '').split('-');
-    return parts.length === 3 ? new Date(+parts[0], +parts[1] - 1, +parts[2], 12) : new Date(value);
+  function forecastMeasure(value, unit) {
+    return Number.isFinite(value) ? Math.round(value) + unit : '—';
+  }
+
+  function forecastDays(now, daily, condition) {
+    var days = [];
+    for (var i = 1; i <= 7; i++) {
+      var date = new TorontoDate(now);
+      date.setDate(date.getDate() + i);
+      var key = date.toISOString().slice(0, 10);
+      var index = Array.isArray(daily.time) ? daily.time.indexOf(key) : -1;
+      var code = daily.weather_code?.[index];
+      var c = Number.isFinite(code) ? condition(code, true) : { icon: 'cloud', label: 'Unavailable' };
+      var high = forecastMeasure(daily.temperature_2m_max?.[index], '°');
+      var low = forecastMeasure(daily.temperature_2m_min?.[index], '°');
+      var chance = forecastMeasure(daily.precipitation_probability_max?.[index], '%');
+      days.push('<article class="forecast-day"><time class="forecast-day-date" datetime="' + key + '"><b>' +
+        App.fmt.dayShort(date) + '</b><span class="num">' + date.getDate() + '</span></time>' +
+        App.icon(c.icon, 58) + '<strong>' + App.esc(c.label) + '</strong><div class="forecast-day-temp num"><b>' +
+        high + '</b><span>' + low + '</span></div>' +
+        '<div class="forecast-rain">' + App.icon('rain', 18) + '<span class="num">' + chance + '</span></div></article>');
+    }
+    return '<div class="forecast-next"><div class="label">Next seven days</div><div class="forecast-days">' +
+      days.join('') + '</div></div>';
   }
 
   function weatherStat(icon, label, value) {
@@ -226,40 +249,32 @@
   function forecastPage() {
     var weather = App.weatherForecast();
     var data = weather.data;
-    var now = App.now();
+    var now = new TorontoDate(wallTime(App.clockEpoch()));
     var head = '<header class="forecast-head"><button class="btn btn--ghost" data-calendar>' + App.icon('left', 22) + 'Calendar</button>' +
       '<h1 class="serif">Ottawa Weather</h1>' +
       '<button class="btn btn--ghost" data-weather-refresh>' + App.icon('sun', 22) + 'Refresh</button></header>';
-    if (!data || !data.current || !data.daily) {
+    var daily = data && data.daily ? data.daily : {};
+    var next = forecastDays(now, daily, weather.condition);
+    if (!data || !data.current) {
       return '<div class="forecast-page">' + head + '<div class="forecast-empty">' + App.icon('cloud', 72) +
-        '<h2 class="serif">Weather is loading</h2><p>The latest saved Ottawa forecast will appear here.</p></div></div>';
+        '<h2 class="serif">' + (weather.error ? 'Weather unavailable' : 'Weather is loading') + '</h2></div>' + next + '</div>';
     }
     var current = data.current;
-    var daily = data.daily;
     var isDay = Number(current.is_day) === 1;
     var todayCondition = weather.condition(current.weather_code, isDay);
-    var todayHigh = Math.round(Number(daily.temperature_2m_max[0]));
-    var todayLow = Math.round(Number(daily.temperature_2m_min[0]));
-    var rain = Math.round(Number(daily.precipitation_probability_max[0]) || 0);
+    var todayIndex = Array.isArray(daily.time) ? daily.time.indexOf(now.toISOString().slice(0, 10)) : -1;
+    var todayHigh = forecastMeasure(daily.temperature_2m_max?.[todayIndex], '°');
+    var todayLow = forecastMeasure(daily.temperature_2m_min?.[todayIndex], '°');
+    var rain = forecastMeasure(daily.precipitation_probability_max?.[todayIndex], '%');
     var humidity = Math.round(Number(current.relative_humidity_2m) || 0);
     var wind = Math.round(Number(current.wind_speed_10m) || 0);
     var today = '<section class="forecast-today weather-' + todayCondition.scene + ' ' + (isDay ? 'is-day' : 'is-night') + '">' + weatherVideo(todayCondition.scene) +
-      '<div class="forecast-today-copy"><div class="label label--light">Today · ' + App.fmt.day(now) + ', ' + App.fmt.month(now) + ' ' + now.getDate() + '</div>' +
+      '<div class="forecast-today-copy"><div class="label label--light">Today · ' + App.fmt.day(now) + ', ' + App.fmt.month(now) + ' ' + now.getDate() + (weather.error ? ' · Saved reading' : '') + '</div>' +
       '<div class="forecast-now num">' + Math.round(Number(current.temperature_2m)) + '°</div>' +
       '<h2 class="serif">' + App.esc(todayCondition.label) + '</h2><p>Feels like <b class="num">' + Math.round(Number(current.apparent_temperature)) + '°</b></p>' +
-      '<div class="forecast-stats">' + weatherStat('sun', 'High', todayHigh + '°') + weatherStat('moon', 'Low', todayLow + '°') +
-      weatherStat('rain', 'Rain', rain + '%') + weatherStat('drop', 'Humidity', humidity + '%') + weatherStat('wind', 'Wind', wind + ' km/h') + '</div></div></section>';
-    var days = [];
-    for (var i = 1; i < 8; i++) {
-      if (!daily.time || !daily.time[i]) continue;
-      var date = dateFromIso(daily.time[i]);
-      var c = weather.condition(daily.weather_code[i], true);
-      var chance = Math.round(Number(daily.precipitation_probability_max[i]) || 0);
-      days.push('<article class="forecast-day"><div class="forecast-day-date"><b>' + App.fmt.dayShort(date) + '</b><span class="num">' + date.getDate() + '</span></div>' +
-        App.icon(c.icon, 58) + '<strong>' + App.esc(c.label) + '</strong><div class="forecast-day-temp num"><b>' + Math.round(Number(daily.temperature_2m_max[i])) + '°</b><span>' + Math.round(Number(daily.temperature_2m_min[i])) + '°</span></div>' +
-        '<div class="forecast-rain">' + App.icon('rain', 18) + '<span class="num">' + chance + '%</span></div></article>');
-    }
-    return '<div class="forecast-page">' + head + today + '<div class="forecast-next"><div class="label">Next seven days</div><div class="forecast-days">' + days.join('') + '</div></div></div>';
+      '<div class="forecast-stats">' + weatherStat('sun', 'High', todayHigh) + weatherStat('moon', 'Low', todayLow) +
+      weatherStat('rain', 'Rain', rain) + weatherStat('drop', 'Humidity', humidity + '%') + weatherStat('wind', 'Wind', wind + ' km/h') + '</div></div></section>';
+    return '<div class="forecast-page">' + head + today + next + '</div>';
   }
 
   function render() {
