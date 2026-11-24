@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { changeEvent, createEvent, events, InputError, openDatabase, validateEvent } from './db.mjs';
 import { readConfig } from './config.mjs';
 import { feeds } from './feeds.mjs';
+import { invokedDirectly } from './entrypoint.mjs';
 import { holidaysForYear } from '../web/js/holiday-dates.js';
 
 const mime = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css',
@@ -126,7 +127,7 @@ export function makeServer({ config, db, root, port = config.port, host = config
   });
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (invokedDirectly(import.meta.url)) {
   const here = dirname(fileURLToPath(import.meta.url));
   const config = readConfig(process.env.HOMEHQ_CONFIG ?? '/etc/homehq/config.json');
   const db = openDatabase(process.env.HOMEHQ_DB ?? '/var/lib/homehq/homehq.sqlite3', process.argv[2] === 'migrate');

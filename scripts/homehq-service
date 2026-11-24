@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -Eeuo pipefail
 umask 027
 root=/opt/homehq
 data=/var/lib/homehq
@@ -13,6 +13,7 @@ active="$root/current"
 journal="$state/transaction"
 recovery="$state/recovery"
 repo=donselkirk/calendar
+source /usr/local/lib/homehq/service-recovery.sh
 
 [[ $EUID = 0 ]] || { echo "Run this command as root or with sudo." >&2; exit 1; }
 install -d -m 0750 -g homehq "$root" "$root/releases" "$state"
@@ -26,34 +27,6 @@ trap 'if [[ -n $worker ]]; then kill "$worker" 2>/dev/null || true; wait "$worke
 
 version_at() {
   if [[ -f "$1/service/version.properties" ]]; then sed -n 's/^VERSION_NAME=//p' "$1/service/version.properties"; fi
-}
-switch_to() {
-  if [[ $1 = none ]]; then unlink "$active" 2>/dev/null || true; return; fi
-  [[ $1 =~ ^[0-9]+\.[0-9]+\.[0-9]+$ && -d "$root/releases/$1" ]]
-  ln -s "$root/releases/$1" "$temp/current"
-  mv -Tf "$temp/current" "$active"
-}
-restore_database() {
-  if [[ -f "$recovery/previous.sqlite3" ]]; then
-    install -m 0640 -o homehq -g homehq "$recovery/previous.sqlite3" "$data/restore.sqlite3"
-    rm -f -- "$db-wal" "$db-shm"
-    mv -f "$data/restore.sqlite3" "$db"
-  else
-    [[ -f "$recovery/no-database" ]] || return 1
-    rm -f -- "$db" "$db-wal" "$db-shm"
-  fi
-  sync -f "$data"
-}
-recover() {
-  [[ -f $journal && -f $flag ]] || return 0
-  local old
-  read -r old < "$journal"
-  systemctl stop "$unit"
-  restore_database
-  switch_to "$old"
-  sync -f "$root"
-  rm -f -- "$journal" "$flag"
-  if [[ $old != none ]]; then systemctl start "$unit"; fi
 }
 release_info() {
   python3 "$helper" metadata > "$temp/release"
@@ -127,24 +100,20 @@ promote() {
   sync -f "$data"
   sync -f "$root"
   systemctl start "$unit"
-  for _ in {1..20}; do
-    if curl -fsS --max-time 1 "$(address)/healthz" | grep -Fq "\"version\":\"$target\""; then
-      printf '%s\n' "$old" > "$temp/previous"
-      mv -f "$temp/previous" "$state/previous"
-      rm -f -- "$flag" "$journal"
-      sync -f "$state"
-      echo "Home HQ $target is running at $(address)/"
-      return
-    fi
-    sleep 1
-  done
-  echo "Installed service did not start." >&2
-  return 1
+  wait_health "$target"
+  printf '%s\n' "$old" > "$temp/previous"
+  mv -f "$temp/previous" "$state/previous"
+  finish_maintenance
+  echo "Home HQ $target is running at $(address)/"
 }
 address() {
   python3 -c 'import json,sys; c=json.load(open(sys.argv[1])); print("http://%s:%s" % (c["host"], c.get("port",8080)))' "$config"
 }
 prepare_transaction() {
+  # A completed transaction can leave its journal behind if power was lost
+  # after writes reopened. Persist its removal before creating a new marker.
+  rm -f -- "$journal"
+  sync -f "$state"
   touch "$flag"
   sync -f "$state"
   systemctl stop "$unit"
@@ -155,16 +124,6 @@ prepare_transaction() {
   mv "$temp/journal" "$journal"
   sync -f "$state"
 }
-failure() {
-  trap - ERR
-  if [[ -f $journal && -f $flag ]]; then recover || echo "Recovery needs attention. Run homehq-service rollback." >&2
-  elif [[ -f $flag ]]; then
-    rm -f -- "$flag"
-    if [[ -n ${current:-} ]]; then systemctl start "$unit" || true; fi
-  fi
-  exit 1
-}
-
 case "${1:-status}" in
   status|doctor)
     printf 'Version: %s\nURL: %s/\n' "$(version_at "$active")" "$(address)"
@@ -187,7 +146,7 @@ case "${1:-status}" in
     fi
     download
     if [[ ! -d "$root/releases/$available" ]]; then mv "$temp/release-files" "$root/releases/$available"; fi
-    trap failure ERR
+    trap 'if ((BASH_SUBSHELL == 0)); then failure; fi' ERR
     prepare_transaction
     test_candidate "$root/releases/$available"
     promote "$available" "${current:-none}"
@@ -195,9 +154,7 @@ case "${1:-status}" in
   rollback)
     if [[ -f $flag ]]; then
       if [[ -f $journal ]]; then recover
-      else
-        rm -f -- "$flag"
-        if [[ -L $active ]]; then systemctl start "$unit"; fi
+      else resume_unmodified "$(version_at "$active")"
       fi
       exit
     fi
@@ -205,7 +162,7 @@ case "${1:-status}" in
     read -r previous < "$state/previous"
     current=$(version_at "$active")
     [[ $previous != none && $previous =~ ^[0-9]+\.[0-9]+\.[0-9]+$ && -n $current ]]
-    trap failure ERR
+    trap 'if ((BASH_SUBSHELL == 0)); then failure; fi' ERR
     prepare_transaction
     # Opening without migration must accept the live schema before testing a downgrade.
     runuser -u homehq -- "$root/releases/$previous/node" --input-type=module -e \

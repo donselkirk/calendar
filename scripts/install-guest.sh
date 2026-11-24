@@ -28,6 +28,7 @@ if [[ ! -x /usr/local/lib/homehq/gh ]] ||
   install -m 0755 "$download/gh" /usr/local/lib/homehq/gh
 fi
 install -m 0644 "$here/release-assets.py" /usr/local/lib/homehq/release-assets.py
+install -m 0644 "$here/service-recovery.sh" /usr/local/lib/homehq/service-recovery.sh
 install -m 0755 "$here/homehq-service" "$here/update" /usr/local/bin/
 install -m 0644 "$here/homehq.service" /etc/systemd/system/homehq.service
 if [[ ! -f /etc/homehq/config.json ]]; then

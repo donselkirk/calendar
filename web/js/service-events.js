@@ -35,7 +35,9 @@ async function mutate(path, method, more, data) {
   const response = await fetch(endpoint + path, { method, headers, body: data && JSON.stringify(data) });
   if (!response.ok) {
     if (response.status === 409) refresh();
-    throw new Error(response.status === 409 ? 'The calendar changed. Try again.' : 'The calendar could not save the change.');
+    const error = new Error(response.status === 409 ? 'The calendar changed. Try again.' : 'The calendar could not save the change.');
+    error.status = response.status;
+    throw error;
   }
   const saved = await response.json();
   generation++;

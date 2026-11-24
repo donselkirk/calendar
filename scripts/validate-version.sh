@@ -3,8 +3,19 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 product="${1:?Provide app or service}"
 case "$product" in
-  app) dir=android; prefix=app-v ;;
-  service) dir=service; prefix=service-v ;;
+  app)
+    dir=android; prefix=app-v
+    runtime_paths=(android/app/src/main android/app/build.gradle gradle gradlew gradle.properties
+      build.gradle settings.gradle release.properties scripts/provision-service-address.sh)
+    ;;
+  service)
+    dir=service; prefix=service-v
+    runtime_paths=(service ':(exclude,glob)service/*.test.mjs' ':(exclude)service/version.properties'
+      web/js web/css web/public web/index.html
+      web/package.json web/pnpm-lock.yaml web/vite.config.js scripts/install-proxmox.sh
+      scripts/install-guest.sh scripts/homehq-service scripts/homehq.service scripts/service-recovery.sh
+      scripts/release-assets.py scripts/update)
+    ;;
   *) exit 2 ;;
 esac
 path="$dir/version.properties"
@@ -31,6 +42,10 @@ if [[ -n $base ]] && git cat-file -e "$base^{commit}" 2>/dev/null; then
   previous=$(git show "$base:$path" 2>/dev/null || true)
   if [[ $product = app && -z $previous ]]; then previous=$(git show "$base:version.properties" 2>/dev/null || true); fi
   previous_name=$(sed -n 's/^VERSION_NAME=//p' <<< "$previous")
+  if [[ $previous_name = "$name" ]] && ! git diff --quiet "$base" -- "${runtime_paths[@]}"; then
+    echo "$product runtime changes require a new version and changelog entry." >&2
+    exit 1
+  fi
   if [[ -n $previous_name && $previous_name != "$name" ]]; then
     [[ $(printf '%s\n' "$name" "$previous_name" | sort -V | tail -1) = "$name" ]]
     if [[ $product = app ]]; then

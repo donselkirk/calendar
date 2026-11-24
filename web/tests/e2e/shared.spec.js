@@ -54,6 +54,28 @@ test('@service Toronto calendar shares events between desktop and frame layouts'
     await expect(second.getByText(/Deleted Shared appointment/)).toBeVisible();
     await first.evaluate(() => window.dispatchEvent(new Event('focus')));
     await expect(first.locator('.mo-event').filter({ hasText: 'Shared appointment' })).toHaveCount(0);
+
+    await first.locator('.mo-cell.is-today').click();
+    await first.locator('[data-add-day]').click();
+    await first.locator('[data-f=title]').fill('Repeating appointment');
+    await first.getByRole('button', { name: 'Yearly' }).click();
+    await first.locator('[data-save]').click();
+    await first.locator('.mo-event').filter({ hasText: 'Repeating appointment' }).click();
+    const status = await second.evaluate(async () => {
+      const path = '/api/v1/events';
+      const list = await (await fetch(path)).json();
+      const event = list.events.find(item => item.title === 'Repeating appointment');
+      return (await fetch(path + '/' + event.id, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json', 'X-HomeHQ-Client': '1', 'If-Match': '"1"' },
+        body: JSON.stringify({ ...event, title: 'Updated appointment' }),
+      })).status;
+    });
+    expect(status).toBe(200);
+    await first.evaluate(() => window.dispatchEvent(new Event('focus')));
+    await expect(first.locator('.mo-event').filter({ hasText: 'Updated appointment' })).toHaveCount(1);
+    await first.locator('[data-delete]').click();
+    await expect(first.getByText('This event changed. Reopen it before deleting.')).toBeVisible();
+    await expect(first.locator('.mo-event').filter({ hasText: 'Updated appointment' })).toHaveCount(1);
   } finally {
     await desktop.close();
     await frame.close();

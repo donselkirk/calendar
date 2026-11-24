@@ -2,7 +2,7 @@
 
 ## Install and configure
 
-Use the commit-pinned command in the stable service release notes. Enable the Proxmox datacenter firewall before provisioning and confirm that it is running on the target node. The installer enables the container firewall with an inbound drop policy and allows TCP 8080 from the single selected private IPv4 subnet. Keep that subnet limited to trusted clients. Use the Proxmox firewall UI to inspect the rule and test it from both allowed and excluded networks before entering household data.
+Use the commit-pinned command in the stable service release notes. The installer checks the Proxmox datacenter firewall setting and that the configured firewall backend is active on the target node. It enables the container firewall with an inbound drop policy and allows TCP 8080 from the single selected private IPv4 subnet. Keep that subnet limited to trusted clients. Use the Proxmox firewall UI to inspect the rule and test it from both allowed and excluded networks before entering household data.
 
 Default mode uses Debian 13 amd64, 1 CPU, 1 GiB RAM, and 4 GiB storage. Both modes confirm the container ID, storage for the template and root disk, bridge, guest IP/prefix, gateway, and allowed client subnet. Advanced mode also asks for hostname, resources, DNS and VLAN. `--plan` validates the inputs and prints the proposed setup. If provisioning fails after creation, inspect the CT and its firewall, then use the printed `--resume CTID` arguments with the original installer revision.
 

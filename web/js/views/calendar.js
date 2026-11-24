@@ -420,15 +420,16 @@
         var button = ev.currentTarget;
         button.disabled = true;
         try {
-          var deleted = await App.deleteSharedEvent(stored);
+          var deleted = await App.deleteSharedEvent({ id: e.seriesId || e.id, revision: e.revision });
           App.closeSheet();
           App.emit('data');
           App.toast('Deleted <b>' + App.esc(e.title) + '</b>', {
             icon: 'calendar', undo: function () { sharedUndo(App.restoreSharedEvent, deleted); }
           });
-        } catch (_error) {
+        } catch (error) {
           button.disabled = false;
-          App.toast('Could not delete this event. Check the calendar and try again.', { tone: 'alert' });
+          App.toast(error.status === 409 ? 'This event changed. Reopen it before deleting.' :
+            'Could not delete this event. Check the calendar and try again.', { tone: 'alert' });
         }
         return;
       }

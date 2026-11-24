@@ -22,6 +22,7 @@ jobs:
       - run: ./scripts/privacy-scan.sh
       - run: pnpm --dir web exec playwright install --with-deps chromium
       - run: bash scripts/check-service.sh
+      - run: bash scripts/package-service.sh && bash scripts/smoke-service-package.sh
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: failure()
         with:

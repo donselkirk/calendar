@@ -12,7 +12,7 @@ trap 'rm -r -- "$stage"' EXIT
 install -d "$stage/service" "$stage/web/js"
 install -m 0755 "$(node -p process.execPath)" "$stage/node"
 install -m 0644 LICENSE "$stage/"
-cp service/{server,db,feeds,config,import}.mjs service/version.properties "$stage/service/"
+cp service/{server,db,feeds,config,import,entrypoint}.mjs service/version.properties "$stage/service/"
 cp web/package.json "$stage/web/"
 cp web/js/{toronto,holiday-dates}.js "$stage/web/js/"
 cp -r web/dist "$stage/web/"

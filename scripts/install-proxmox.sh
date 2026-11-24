@@ -16,6 +16,17 @@ done
 [[ $EUID = 0 && $(uname -m) = x86_64 ]] || { echo "Run as root on a Proxmox amd64 host."; exit 1; }
 for cmd in pct pveam pvesh pvesm curl python3 ip; do command -v "$cmd" >/dev/null; done
 node=$(hostname -s)
+require_firewall() {
+  local backend
+  pvesh get /cluster/firewall/options --output-format json |
+    python3 -c 'import json,sys; sys.exit(0 if json.load(sys.stdin).get("enable") in (1, "1") else "Enable the Proxmox datacenter firewall before installing Home HQ.")' ||
+    return 1
+  backend=$(pvesh get "/nodes/$node/firewall/options" --output-format json | python3 -c '
+import json,sys
+print("proxmox-firewall.service" if json.load(sys.stdin).get("nftables") in (1, "1") else "pve-firewall.service")') || return 1
+  systemctl is-active --quiet "$backend" ||
+    { echo "The selected firewall backend ($backend) is not running on $node." >&2; return 1; }
+}
 if [[ -n $resume ]]; then
   [[ $plan = 0 && $resume =~ ^[1-9][0-9]{2,8}$ ]]
   ct=$resume
@@ -24,8 +35,9 @@ if [[ -n $resume ]]; then
   grep -qx "description: homehq-installer-$ref" <<< "$existing" ||
     { echo "Container is not marked as created by this installer revision."; exit 1; }
   firewall="/nodes/$node/lxc/$ct/firewall"
-  pvesh get /cluster/firewall/options --output-format json |
-    python3 -c 'import json,sys; sys.exit(0 if json.load(sys.stdin).get("enable") else "Datacenter firewall is disabled.")'
+  require_firewall
+  grep -Eq '^net0: (.*[, ])?firewall=1(,|$)' <<< "$existing" ||
+    { echo "Enable the firewall on the container's LAN interface before resuming." >&2; exit 1; }
   pvesh get "$firewall/options" --output-format json | python3 -c '
 import json,sys
 options=json.load(sys.stdin)
@@ -102,8 +114,7 @@ PY
   ip link show dev "$bridge" >/dev/null
   pvesm status --storage "$disk" --content rootdir | awk 'NR>1 && $3=="active" {ok=1} END{exit !ok}'
   pvesm status --storage "$templates" --content vztmpl | awk 'NR>1 && $3=="active" {ok=1} END{exit !ok}'
-  pvesh get /cluster/firewall/options --output-format json |
-    python3 -c 'import json,sys; sys.exit(0 if json.load(sys.stdin).get("enable") else "Enable the Proxmox datacenter firewall before installing Home HQ.")'
+  require_firewall
   printf '\nHome HQ %s (%s) · %s · CPU %s · RAM %s MiB · disk %s GiB (%s)\n' \
     "$ct" "$hostname_value" "$mode" "$cpu" "$ram" "$disk_size" "$disk"
   printf 'Template storage %s · bridge %s · address %s · gateway %s · allow %s on TCP 8080\n' \
@@ -133,6 +144,7 @@ PY
   firewall="/nodes/$node/lxc/$ct/firewall"
   pvesh create "$firewall/rules" --type in --action ACCEPT --source "$lan" --proto tcp --dport 8080 --enable 1
   pvesh set "$firewall/options" --enable 1 --policy_in DROP --policy_out ACCEPT
+  require_firewall
   step='starting the container'
   pct start "$ct"
 fi
@@ -143,7 +155,7 @@ tmp=$(mktemp -d)
 trap 'rm -r -- "$tmp"' EXIT
 dest=/root/homehq-installer
 pct exec "$ct" -- install -d -m 0700 "$dest"
-for file in install-guest.sh release-assets.py homehq-service update homehq.service; do
+for file in install-guest.sh release-assets.py service-recovery.sh homehq-service update homehq.service; do
   curl -fsSL --proto '=https' --max-time 30 \
     "https://raw.githubusercontent.com/donselkirk/calendar/$ref/scripts/$file" -o "$tmp/$file"
   pct push "$ct" "$tmp/$file" "$dest/$file" --perms 0600

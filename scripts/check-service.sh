@@ -4,6 +4,8 @@ cd "$(dirname "$0")/.."
 pnpm_cmd="${PNPM_CMD:-pnpm}"
 for script in scripts/install-proxmox.sh scripts/install-guest.sh scripts/homehq-service scripts/update; do bash -n "$script"; done
 python3 scripts/test-release-assets.py
+bash scripts/test-service-recovery.sh
+bash scripts/test-product-versions.sh
 node --test service/*.test.mjs
 "$pnpm_cmd" --dir web lint
 "$pnpm_cmd" --dir web test

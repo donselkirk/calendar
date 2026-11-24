@@ -1,9 +1,8 @@
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { openDatabase, transaction, validateEvent } from './db.mjs';
 import { readConfig } from './config.mjs';
+import { invokedDirectly } from './entrypoint.mjs';
 import { wallTime } from '../web/js/toronto.js';
 
 const legacySlots = ['personal', 'familycal', 'work', 'other'];
@@ -51,7 +50,7 @@ export function importLegacy(db, exportData, ids, apply = false) {
   });
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (invokedDirectly(import.meta.url)) {
   const [, , file, mode] = process.argv;
   if (!file || !['--dry-run', '--apply'].includes(mode)) throw new Error('Provide an export and --dry-run or --apply');
   const config = readConfig(process.env.HOMEHQ_CONFIG ?? '/etc/homehq/config.json');

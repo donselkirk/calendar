@@ -4,6 +4,7 @@
 
 - Connect the frame to Home HQ with native setup and outage recovery.
 - Keep the screensaver, navigation controls, and signed APK updates on the frame.
+- Make the dim screensaver's drifting colors visible with smooth transitions into and out of blackout.
 
 ## 1.11.9 - 2026-11-08
 

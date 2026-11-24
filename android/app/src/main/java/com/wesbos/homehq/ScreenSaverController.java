@@ -23,6 +23,7 @@ import java.util.Random;
 
 final class ScreenSaverController {
   private static final long CLOCK_MIN = 1577836800000L;
+  private static final float DIM_BRIGHTNESS = .22f;
   private static final String PREF_STATE = "display_state";
   static final String PREF_LAST_INTERACTION = "last_interaction_wall";
   private final Activity activity;
@@ -67,11 +68,13 @@ final class ScreenSaverController {
     time.setTextSize(TypedValue.COMPLEX_UNIT_SP, 112);
     time.setGravity(Gravity.CENTER);
     time.setAlpha(.72f);
+    time.setShadowLayer(10f, 0f, 1f, Color.BLACK);
     date = new TextView(activity);
     date.setTextColor(Color.WHITE);
     date.setTextSize(TypedValue.COMPLEX_UNIT_SP, 30);
     date.setGravity(Gravity.CENTER);
     date.setAlpha(.55f);
+    date.setShadowLayer(7f, 0f, 1f, Color.BLACK);
     clockBox.addView(time);
     clockBox.addView(date);
     FrameLayout.LayoutParams centered = new FrameLayout.LayoutParams(
@@ -146,7 +149,7 @@ final class ScreenSaverController {
       } else {
         time.setVisibility(View.VISIBLE); date.setVisibility(View.VISIBLE);
       }
-      params.screenBrightness = .12f;
+      params.screenBrightness = DIM_BRIGHTNESS;
       if (state == DisplayPolicy.OFF) handler.postDelayed(finishBlackout, 900L);
       if (overlay.getVisibility() != View.VISIBLE) {
         overlay.setAlpha(0f);
@@ -164,52 +167,75 @@ final class ScreenSaverController {
     activity.getWindow().setAttributes(params);
   }
 
-  /** A deliberately slow, low-contrast field that avoids leaving the same pixels lit all night. */
+  /** Drifting pools of color over black, with new motion and a new palette on each dim entry. */
   static final class AmbientView extends View {
     static final long MIN_COLOR_MS = 18_000L;
     static final long COLOR_RANGE_MS = 14_000L;
     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
-    private final Random random = new Random();
-    private final float[] phase = new float[3];
-    private final float[] speed = new float[3];
+    private final Random random;
+    private final double[] phase = new double[3];
+    private final double[] speed = new double[3];
+    private final float[] hue = new float[3];
     private final int[] from = new int[3];
     private final int[] to = new int[3];
+    private long sceneStart;
     private long colorStart;
     private long colorDuration;
     private boolean running;
-    private boolean off;
 
     AmbientView(android.content.Context context) {
+      this(context, new Random());
+    }
+
+    AmbientView(android.content.Context context, Random random) {
       super(context);
-      for (int i = 0; i < 3; i++) {
-        phase[i] = random.nextFloat() * 6.283f;
-        speed[i] = .000018f + random.nextFloat() * .000020f;
-        from[i] = randomColor();
-        to[i] = randomColor();
-      }
-      resetColorClock(SystemClock.elapsedRealtime());
+      this.random = random;
+      setAlpha(0f);
     }
 
     void setOff(boolean value) {
-      off = value;
-      running = !value;
-      if (!value) { randomizeMotion(); invalidate(); }
       animate().cancel();
-      animate().alpha(value ? 0f : 1f).setDuration(900L).start();
+      if (value) {
+        if (running) {
+          animate().alpha(0f).setDuration(850L).withEndAction(() -> {
+            running = false;
+            invalidate();
+          }).start();
+        } else {
+          setAlpha(0f);
+        }
+        return;
+      }
+      beginScene(SystemClock.elapsedRealtime());
+      running = true;
+      invalidate();
+      animate().alpha(1f).setDuration(700L).start();
     }
 
-    void stop() { running = false; }
+    void stop() {
+      animate().cancel();
+      running = false;
+    }
 
-    private void randomizeMotion() {
+    void beginScene(long now) {
+      sceneStart = now;
+      resetColorClock(now);
       for (int i = 0; i < 3; i++) {
-        phase[i] = random.nextFloat() * 6.283f;
-        speed[i] = .000018f + random.nextFloat() * .000020f;
+        phase[i] = random.nextDouble() * 2 * Math.PI;
+        speed[i] = .000032 + random.nextDouble() * .000024;
+        hue[i] = random.nextFloat() * 360f;
+        from[i] = color(hue[i]);
+        to[i] = nextColor(i);
       }
     }
 
-    private int randomColor() {
-      float hue = random.nextFloat() * 360f;
-      return Color.HSVToColor(125, new float[] {hue, .48f + random.nextFloat() * .25f, .42f + random.nextFloat() * .2f});
+    private int nextColor(int index) {
+      hue[index] = (hue[index] + 65f + random.nextFloat() * 230f) % 360f;
+      return color(hue[index]);
+    }
+
+    private int color(float h) {
+      return Color.HSVToColor(182, new float[] {h, .60f + random.nextFloat() * .22f, .56f + random.nextFloat() * .15f});
     }
 
     private void resetColorClock(long now) {
@@ -217,29 +243,46 @@ final class ScreenSaverController {
       colorDuration = MIN_COLOR_MS + (long) (random.nextFloat() * COLOR_RANGE_MS);
     }
 
+    float centerX(int i, long now) {
+      return .5f + .39f * (float) Math.sin(phase[i] + (now - sceneStart) * speed[i]);
+    }
+
+    float centerY(int i, long now) {
+      return .5f + .39f * (float) Math.cos(phase[i] * 1.37 + (now - sceneStart) * speed[i] * .77);
+    }
+
+    int colorAt(int i, long now) {
+      float progress = Math.min(1f, (now - colorStart) / (float) colorDuration);
+      return blend(from[i], to[i], progress * progress * (3f - 2f * progress));
+    }
+
+    void advancePalette(long now) {
+      if (now - colorStart < colorDuration) return;
+      for (int i = 0; i < 3; i++) {
+        from[i] = to[i];
+        to[i] = nextColor(i);
+      }
+      resetColorClock(now);
+    }
+
     @Override protected void onDraw(Canvas canvas) {
       super.onDraw(canvas);
-      canvas.drawColor(Color.rgb(5, 7, 9));
-      if (off) return;
+      canvas.drawColor(Color.BLACK);
+      if (colorDuration == 0 || getWidth() == 0 || getHeight() == 0) return;
       long now = SystemClock.elapsedRealtime();
-      float progress = Math.min(1f, (now - colorStart) / (float) colorDuration);
-      float eased = progress * progress * (3f - 2f * progress);
+      advancePalette(now);
       int width = getWidth(), height = getHeight();
       for (int i = 0; i < 3; i++) {
-        float x = width * (.5f + .38f * (float) Math.sin(phase[i] + now * speed[i]));
-        float y = height * (.5f + .38f * (float) Math.cos(phase[i] * 1.37f + now * speed[i] * .77f));
-        float radius = Math.max(width, height) * (.34f + i * .06f);
-        int color = blend(from[i], to[i], eased);
-        paint.setShader(new RadialGradient(x, y, radius, color, Color.TRANSPARENT, Shader.TileMode.CLAMP));
+        float x = width * centerX(i, now);
+        float y = height * centerY(i, now);
+        float radius = Math.max(width, height) * (.35f + i * .055f);
+        int color = colorAt(i, now);
+        int edge = color & 0x00ffffff;
+        paint.setShader(new RadialGradient(x, y, radius, color, edge, Shader.TileMode.CLAMP));
         canvas.drawCircle(x, y, radius, paint);
       }
       paint.setShader(null);
-      canvas.drawColor(Color.argb(150, 0, 0, 0));
-      if (progress >= 1f) {
-        for (int i = 0; i < 3; i++) { from[i] = to[i]; to[i] = randomColor(); }
-        resetColorClock(now);
-      }
-      if (running) postInvalidateDelayed(33L);
+      if (running) postInvalidateDelayed(40L);
     }
 
     static int blend(int a, int b, float amount) {
