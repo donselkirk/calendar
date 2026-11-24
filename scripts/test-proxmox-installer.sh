@@ -53,17 +53,18 @@ systemctl() { printf 'Unexpected firewall management\n' >&2; return 1; }
 mode_fixture=Default
 install_homehq --ref "$commit" --plan > "$fixture/plan"
 grep -Fq 'Calendar access: any client that can reach http://10.0.0.10:8080/' "$fixture/plan"
+grep -Fq 'Proxmox Console opens a shell without a guest login.' "$fixture/plan"
 [[ ! -e $fixture/calls ]]
 
 install_homehq --ref "$commit" > "$fixture/install"
-grep -Eq '^pct create 105 .*--net0 name=eth0,bridge=vmbr0,ip=10\.0\.0\.10/24,gw=10\.0\.0\.1,firewall=0 --onboot 1 --tags homehq' "$fixture/calls"
+grep -Eq '^pct create 105 .*--net0 name=eth0,bridge=vmbr0,ip=10\.0\.0\.10/24,gw=10\.0\.0\.1,firewall=0 --onboot 1 --cmode shell --tags homehq' "$fixture/calls"
 grep -Fxq 'pct exec 105 -- bash /root/homehq-installer/install-guest.sh 10.0.0.10' "$fixture/calls"
 grep -Fq 'Home HQ is ready at http://10.0.0.10:8080/ (CT 105).' "$fixture/install"
 
 mode_fixture=Advanced
 : > "$fixture/calls"
 install_homehq --ref "$commit" > "$fixture/install"
-grep -Eq '^pct create 105 .*firewall=0,tag=25 .*--nameserver 10\.0\.0\.2$' "$fixture/calls"
+grep -Eq '^pct create 105 .*firewall=0,tag=25 .*--cmode shell .*--nameserver 10\.0\.0\.2$' "$fixture/calls"
 
 : > "$fixture/calls"
 install_homehq --ref "$commit" --resume 105 > "$fixture/install"

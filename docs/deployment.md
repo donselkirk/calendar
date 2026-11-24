@@ -6,6 +6,8 @@ Use the commit-pinned command in the stable service release notes. The installer
 
 Default mode uses Debian 13 amd64, 1 CPU, 1 GiB RAM, and 4 GiB storage. Both modes confirm the container ID, storage for the template and root disk, bridge, guest IP/prefix, and gateway. Advanced mode also asks for hostname, resources, DNS and VLAN. `--plan` validates the inputs and prints the proposed setup. If provisioning fails after creation, inspect the CT, then use the printed `--resume CTID` arguments with the original installer revision.
 
+If package downloads fail with a name resolution error, check the guest's bridge, gateway, and DNS. If the default DNS inherited from the host is unreachable from the guest, set a reachable server under the container's **DNS** settings before resuming. In a fresh install, you can enter that DNS address in **Advanced** mode.
+
 In the guest, populate `/etc/homehq/config.json`, preserve the installer’s host address, and restart `homehq.service`. Keep the configuration owned by `root:homehq` with mode `0640`. Use the same calendar IDs as the installed frame. The optional waste identifier is private and only the service contacts ReCollect.
 
 ```json
@@ -23,6 +25,7 @@ To enable collection, include `waste` with `placeId` and numeric `serviceId`. If
 
 ## Maintain the service
 
+- The installer sets the Proxmox console mode to **Shell**. Open **Console** as a Proxmox user with console permissions to get a root shell in the unprivileged container without a guest login. For an existing Home HQ container, apply the same setting from the host with `pct set CTID --cmode shell`.
 - `update --check` reports the installed and newest stable service releases. `update` displays the release notes and prompts before applying. `update --yes` performs an explicit update without prompting.
 - `homehq-service doctor` checks readiness, SQLite integrity, and recent service logs. If a failed or interrupted upgrade leaves the service in maintenance, run `homehq-service rollback`. It restores the pre-activation database only while writes are still suspended. After activation it tests the previous release against a copy of the current database and keeps newer events. An incompatible older schema is refused.
 - The guest update does not update Debian packages. Apply those separately through your existing package-maintenance process. The root-owned updater and unit are installed by the pinned bootstrap. If either needs an upgrade, review and run the newer bootstrap files in the existing guest without recreating it.
