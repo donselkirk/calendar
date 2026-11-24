@@ -1,5 +1,9 @@
 # Calendar service changelog
 
+## 1.0.1
+
+- Create new Home HQ containers with open LAN access, without an allowed-clients prompt or a Proxmox datacenter firewall prerequisite.
+
 ## 1.0.0
 
 - Serve a shared calendar and Ottawa forecast from a Proxmox LXC.

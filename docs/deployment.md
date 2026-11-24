@@ -2,9 +2,9 @@
 
 ## Install and configure
 
-Use the commit-pinned command in the stable service release notes. The installer checks the Proxmox datacenter firewall setting and that the configured firewall backend is active on the target node. It enables the container firewall with an inbound drop policy and allows TCP 8080 from the single selected private IPv4 subnet. Keep that subnet limited to trusted clients. Use the Proxmox firewall UI to inspect the rule and test it from both allowed and excluded networks before entering household data.
+Use the commit-pinned command in the stable service release notes. The installer creates a container with open LAN access to Home HQ on TCP 8080. It leaves the Proxmox datacenter firewall and existing rules alone. Any device that can reach the container's private address can view and edit the calendar. Keep the address private and confirm both desktop and frame can reach it through your existing network.
 
-Default mode uses Debian 13 amd64, 1 CPU, 1 GiB RAM, and 4 GiB storage. Both modes confirm the container ID, storage for the template and root disk, bridge, guest IP/prefix, gateway, and allowed client subnet. Advanced mode also asks for hostname, resources, DNS and VLAN. `--plan` validates the inputs and prints the proposed setup. If provisioning fails after creation, inspect the CT and its firewall, then use the printed `--resume CTID` arguments with the original installer revision.
+Default mode uses Debian 13 amd64, 1 CPU, 1 GiB RAM, and 4 GiB storage. Both modes confirm the container ID, storage for the template and root disk, bridge, guest IP/prefix, and gateway. Advanced mode also asks for hostname, resources, DNS and VLAN. `--plan` validates the inputs and prints the proposed setup. If provisioning fails after creation, inspect the CT, then use the printed `--resume CTID` arguments with the original installer revision.
 
 In the guest, populate `/etc/homehq/config.json`, preserve the installer’s host address, and restart `homehq.service`. Keep the configuration owned by `root:homehq` with mode `0640`. Use the same calendar IDs as the installed frame. The optional waste identifier is private and only the service contacts ReCollect.
 
@@ -19,7 +19,7 @@ In the guest, populate `/etc/homehq/config.json`, preserve the installer’s hos
 }
 ```
 
-To enable collection, include `waste` with `placeId` and numeric `serviceId`. The firewall and frame configuration must be updated together if the address or port changes. Use the two-finger Controls menu on the frame or `bash scripts/provision-service-address.sh http://PRIVATE-IP:8080/` over authorized USB/ADB.
+To enable collection, include `waste` with `placeId` and numeric `serviceId`. If the address or port changes, update the frame configuration and any network rules you manage separately. Use the two-finger Controls menu on the frame or `bash scripts/provision-service-address.sh http://PRIVATE-IP:8080/` over authorized USB/ADB.
 
 ## Maintain the service
 

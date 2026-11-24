@@ -6,7 +6,7 @@ Home HQ runs on a Proxmox LXC and serves a shared calendar and Ottawa weather da
 
 Open the newest stable **Home HQ Service** entry on the [GitHub releases page](https://github.com/donselkirk/calendar/releases). Copy its one-line installer command into the **Proxmox host shell**. The command includes the reviewed commit in both the download URL and the `--ref` argument. Select **Default** or **Advanced**, then confirm the network and storage settings. If you want to preview the changes first, add `--plan`.
 
-The default is an unprivileged Debian 13 amd64 LXC with 1 CPU, 1 GiB RAM and a 4 GiB disk. Have a free private address, gateway, allowed subnet, and Proxmox storage ready. The Proxmox datacenter firewall must be enabled. Open the printed URL on desktop. On the frame, hold two fingers on the display, choose **Calendar service address**, and enter that same URL.
+The default is an unprivileged Debian 13 amd64 LXC with 1 CPU, 1 GiB RAM and a 4 GiB disk. Have a free private address, gateway, and Proxmox storage ready. Any client that can reach the container's private address can open the calendar. You can leave the Proxmox datacenter firewall off. Open the printed URL on desktop. On the frame, hold two fingers on the display, choose **Calendar service address**, and enter that same URL.
 
 ## Maintain the LXC
 
