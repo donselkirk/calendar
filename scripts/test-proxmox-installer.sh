@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+umask 077
 cd "$(dirname "$0")/.."
 source scripts/install-proxmox.sh
 
@@ -38,7 +39,8 @@ pveam() {
 pct() {
   printf 'pct %s\n' "$*" >> "$fixture/calls"
   case $1 in
-    create|start|exec|push) : ;;
+    create|start) [[ $(umask) = 0022 ]] ;;
+    exec|push) : ;;
     config)
       printf 'unprivileged: 1\ndescription: %s\n' "$description"
       printf 'net0: name=eth0,bridge=vmbr0,ip=10.0.0.10/24,gw=10.0.0.1,firewall=0\n'

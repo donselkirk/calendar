@@ -15,7 +15,8 @@ ask() {
 
 install_homehq() (
   set -euo pipefail
-  umask 077
+  # Proxmox writes guest resolver files using the calling process's umask.
+  umask 022
 
   ref=
   plan=0
