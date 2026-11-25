@@ -17,6 +17,14 @@ export function readConfig(file) {
   catch (error) { if (error.code !== 'ENOENT') throw new Error('Invalid Home HQ configuration'); }
   const host = raw.host ?? '127.0.0.1';
   const port = raw.port ?? 8080;
+  const proxyOrigins = raw.proxyOrigins ?? [];
+  if (!Array.isArray(proxyOrigins) || proxyOrigins.some(value => {
+    try {
+      const url = new URL(value);
+      return typeof value !== 'string' || !['http:', 'https:'].includes(url.protocol) ||
+        url.origin !== value || url.username || url.password;
+    } catch { return true; }
+  })) throw new Error('Invalid proxy origins');
   if (!privateIPv4(host) || !Number.isInteger(port) || port < 1024 || port > 65535) {
     throw new Error('Use a private IP and a valid service port');
   }
@@ -30,7 +38,7 @@ export function readConfig(file) {
   const waste = raw.waste;
   if (waste && (typeof waste.placeId !== 'string' || !/^[a-zA-Z0-9_-]{1,160}$/.test(waste.placeId) ||
       !Number.isInteger(waste.serviceId) || waste.serviceId < 1)) throw new Error('Invalid collection configuration');
-  return { host, port, waste, publicConfig: {
+  return { host, port, waste, proxyOrigins, publicConfig: {
     schemaVersion: 1, configured: Boolean(raw.people), familyLabel,
     people: people.map(({id, name, color, ink}) => ({id, name, color, ink})), wasteEnabled: Boolean(waste),
   } };

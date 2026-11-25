@@ -1,5 +1,9 @@
 # Calendar service changelog
 
+## 1.0.4
+
+- Allow configured Caddy proxy origins to access and edit the calendar.
+
 ## 1.0.3
 
 - Finish setting up Home HQ when the Proxmox guest command environment omits `/usr/local/bin`.

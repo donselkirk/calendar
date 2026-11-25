@@ -67,14 +67,17 @@ export function makeServer({ config, db, root, port = config.port, host = config
       "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
     try {
       const authority = `${host}:${port || req.socket.localPort}`;
-      if (req.headers.host !== authority && !(port === 80 && req.headers.host === host)) {
+      const direct = req.headers.host === authority || (port === 80 && req.headers.host === host);
+      const proxyOrigins = (config.proxyOrigins ?? []).filter(origin => new URL(origin).host === req.headers.host);
+      if (!direct && !proxyOrigins.length) {
         throw new InputError(403, 'Invalid host');
       }
       if (!req.url?.startsWith('/') || req.url.startsWith('//')) throw new InputError(400, 'Invalid URL');
       const url = new URL(req.url, 'http://' + authority);
       const path = decodeURIComponent(url.pathname);
       const read = req.method === 'GET' || req.method === 'HEAD';
-      if (!read && (req.headers.origin !== `http://${req.headers.host}` ||
+      if (!read && (!((direct && req.headers.origin === `http://${req.headers.host}`) ||
+          proxyOrigins.includes(req.headers.origin)) ||
           req.headers['x-homehq-client'] !== '1' ||
           req.headers['content-type']?.split(';')[0] !== 'application/json')) {
         throw new InputError(403, 'Use a same-origin JSON request');
