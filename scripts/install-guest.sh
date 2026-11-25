@@ -1,4 +1,13 @@
 #!/usr/bin/env bash
+activate_homehq() {
+  systemctl daemon-reload
+  /usr/local/bin/homehq-service update --yes
+  systemctl enable --now homehq.service
+  /usr/local/bin/homehq-service status
+}
+
+if [[ ${BASH_SOURCE[0]} != "$0" ]]; then return; fi
+
 set -euo pipefail
 umask 027
 [[ $EUID = 0 && $# = 1 ]] || { echo "Run the guest install as root with the guest IPv4 address."; exit 1; }
@@ -7,6 +16,10 @@ here=$(dirname "$(realpath "$0")")
 [[ $(dpkg --print-architecture) = amd64 ]]
 . /etc/os-release
 [[ $ID = debian && $VERSION_ID = 13 ]] || { echo "Home HQ requires a Debian 13 guest."; exit 1; }
+if ! runuser -u _apt -- test -r /etc/resolv.conf; then
+  echo "APT cannot read the guest resolver configuration. Check permissions on /etc and /etc/resolv.conf." >&2
+  exit 1
+fi
 export DEBIAN_FRONTEND=noninteractive
 apt-get --error-on=any update
 apt-get install -y ca-certificates curl git python3 sqlite3
@@ -44,7 +57,4 @@ PY
   chgrp homehq /etc/homehq/config.json
   chmod 0640 /etc/homehq/config.json
 fi
-systemctl daemon-reload
-homehq-service update --yes
-systemctl enable --now homehq.service
-homehq-service status
+activate_homehq

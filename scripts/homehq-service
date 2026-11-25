@@ -1,30 +1,4 @@
 #!/usr/bin/env bash
-set -Eeuo pipefail
-umask 027
-root=/opt/homehq
-data=/var/lib/homehq
-db="$data/homehq.sqlite3"
-state="$root/state"
-helper=/usr/local/lib/homehq/release-assets.py
-unit=homehq.service
-config=/etc/homehq/config.json
-flag="$state/maintenance"
-active="$root/current"
-journal="$state/transaction"
-recovery="$state/recovery"
-repo=donselkirk/calendar
-source /usr/local/lib/homehq/service-recovery.sh
-
-[[ $EUID = 0 ]] || { echo "Run this command as root or with sudo." >&2; exit 1; }
-install -d -m 0750 -g homehq "$root" "$root/releases" "$state"
-exec 9>"$state/lock"
-flock -n 9 || { echo "Another Home HQ maintenance command is running." >&2; exit 1; }
-temp=$(mktemp -d "$state/work.XXXXXXXX")
-chmod 0750 "$temp"
-chgrp homehq "$temp"
-worker=
-trap 'if [[ -n $worker ]]; then kill "$worker" 2>/dev/null || true; wait "$worker" 2>/dev/null || true; fi; rm -r -- "$temp"' EXIT
-
 version_at() {
   if [[ -f "$1/service/version.properties" ]]; then sed -n 's/^VERSION_NAME=//p' "$1/service/version.properties"; fi
 }
@@ -40,14 +14,14 @@ release_info() {
   printf 'Installed: %s\nAvailable: %s\n' "${current:-none}" "$available"
 }
 download() {
-  local tagged
+  local tagged bundle="$temp/$artifact.attestation.jsonl"
   tagged=$(git ls-remote "https://github.com/$repo.git" "refs/tags/service-v$available" "refs/tags/service-v$available^{}" |
     awk 'NR==1 {sha=$1} /\^\{\}$/ {sha=$1} END {print sha}')
   [[ $tagged = "$commit" ]] || { echo "Release tag and manifest disagree." >&2; return 1; }
   curl -fsSL --proto '=https' --max-time 240 --max-filesize 200000000 "$url/$artifact" -o "$temp/$artifact"
-  curl -fsSL --proto '=https' --max-time 30 --max-filesize 2000000 "$url/$artifact.attestation.jsonl" -o "$temp/provenance"
+  curl -fsSL --proto '=https' --max-time 30 --max-filesize 2000000 "$url/$artifact.attestation.jsonl" -o "$bundle"
   printf '%s  %s\n' "$digest" "$temp/$artifact" | sha256sum -c -
-  /usr/local/lib/homehq/gh attestation verify "$temp/$artifact" --bundle "$temp/provenance" --repo "$repo" \
+  /usr/local/lib/homehq/gh attestation verify "$temp/$artifact" --bundle "$bundle" --repo "$repo" \
     --signer-workflow "$repo/.github/workflows/service-release.yml" --source-ref refs/heads/main \
     --source-digest "$commit" --deny-self-hosted-runners
   mkdir -m 0755 "$temp/release-files"
@@ -124,6 +98,34 @@ prepare_transaction() {
   mv "$temp/journal" "$journal"
   sync -f "$state"
 }
+if [[ ${BASH_SOURCE[0]} != "$0" ]]; then return; fi
+
+set -Eeuo pipefail
+umask 027
+root=/opt/homehq
+data=/var/lib/homehq
+db="$data/homehq.sqlite3"
+state="$root/state"
+helper=/usr/local/lib/homehq/release-assets.py
+unit=homehq.service
+config=/etc/homehq/config.json
+flag="$state/maintenance"
+active="$root/current"
+journal="$state/transaction"
+recovery="$state/recovery"
+repo=donselkirk/calendar
+source /usr/local/lib/homehq/service-recovery.sh
+
+[[ $EUID = 0 ]] || { echo "Run this command as root or with sudo." >&2; exit 1; }
+install -d -m 0750 -g homehq "$root" "$root/releases" "$state"
+exec 9>"$state/lock"
+flock -n 9 || { echo "Another Home HQ maintenance command is running." >&2; exit 1; }
+temp=$(mktemp -d "$state/work.XXXXXXXX")
+chmod 0750 "$temp"
+chgrp homehq "$temp"
+worker=
+trap 'if [[ -n $worker ]]; then kill "$worker" 2>/dev/null || true; wait "$worker" 2>/dev/null || true; fi; rm -r -- "$temp"' EXIT
+
 case "${1:-status}" in
   status|doctor)
     printf 'Version: %s\nURL: %s/\n' "$(version_at "$active")" "$(address)"
