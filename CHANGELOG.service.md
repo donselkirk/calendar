@@ -1,5 +1,11 @@
 # Calendar service changelog
 
+## 1.0.3
+
+- Finish setting up Home HQ when the Proxmox guest command environment omits `/usr/local/bin`.
+- Keep the attestation bundle’s `.jsonl` extension during download so the release verifier can read it.
+- Check that APT can read the container’s DNS configuration before trying package downloads.
+
 ## 1.0.2
 
 - Open the Proxmox Console directly to a shell for new Home HQ containers, with access governed by Proxmox permissions.
