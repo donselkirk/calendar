@@ -295,6 +295,7 @@
 /* Official Ottawa collection markers. Kept at the upper-right so they read separately from
    personal events and remain visible even on a busy day. */
 .waste-markers { position: absolute; top: 6px; right: 7px; display: flex; align-items: center; gap: 4px; }
+.school-pa-marker { color: #7850a0; display: inline-flex; flex-shrink: 0; align-items: center; }
 .waste-icon {
   width: 29px; height: 29px; flex: none;
   display: inline-flex; align-items: center; justify-content: center;

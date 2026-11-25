@@ -1,4 +1,5 @@
 import { torontoDay } from '../web/js/toronto.js';
+import { parseSecondaryPaDays, publishedPaDays, schoolCalendarUrl } from './school-days.mjs';
 
 const weatherUrl = 'https://api.open-meteo.com/v1/forecast?latitude=45.4215&longitude=-75.6972' +
   '&current=temperature_2m,apparent_temperature,relative_humidity_2m,wind_speed_10m,is_day,weather_code' +
@@ -8,7 +9,7 @@ const weatherUrl = 'https://api.open-meteo.com/v1/forecast?latitude=45.4215&long
 export function feeds(db, config, request = fetch) {
   const pending = new Map();
   const failedAt = new Map();
-  async function refresh(key, url, interval, normalize, sameDay = false) {
+  async function refresh(key, url, interval, normalize, sameDay = false, read = response => response.json()) {
     const cached = db.prepare('SELECT * FROM cache WHERE key=?').get(key);
     const now = Date.now();
     if (cached && now - cached.fetched < interval &&
@@ -24,7 +25,7 @@ export function feeds(db, config, request = fetch) {
       try {
         const response = await request(url, { signal: AbortSignal.timeout(8000), redirect: 'error' });
         if (!response.ok) throw new Error('Feed unavailable');
-        const data = normalize(await response.json());
+        const data = normalize(await read(response));
         if (!data) throw new Error('Invalid feed');
         const fetchedAt = Date.now();
         db.prepare('INSERT OR REPLACE INTO cache VALUES (?, ?, ?)').run(key, JSON.stringify(data), fetchedAt);
@@ -41,6 +42,11 @@ export function feeds(db, config, request = fetch) {
     weather: () => refresh('weather', weatherUrl, 30 * 60_000,
       data => Number.isFinite(data?.current?.temperature_2m) && Array.isArray(data?.daily?.temperature_2m_max) ? data : null,
       true),
+    async schoolDays() {
+      const result = await refresh('school-pa-days', schoolCalendarUrl, 6 * 60 * 60_000,
+        parseSecondaryPaDays, false, response => response.text());
+      return { ...result, data: result.data ?? publishedPaDays, published: result.data == null };
+    },
     waste() {
       const waste = config.waste;
       if (!waste) return { data: null, fetchedAt: 0, stale: true };

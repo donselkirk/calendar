@@ -42,6 +42,44 @@ test('weather cache refreshes at Toronto midnight even before its normal expiry'
   assert.equal(requests, 2);
 });
 
+test('school days keep published or cached dates through upstream outages and refresh with the feed', async t => {
+  const { db, config } = await fixture(t);
+  t.after(() => db.close());
+  let now = Date.parse('2026-11-24T16:00:00Z');
+  t.mock.method(Date, 'now', () => now);
+  let body = '', calls = 0;
+  const schoolDays = feeds(db, config, async url => {
+    assert.equal(url, 'https://www.ocdsb.ca/ics/10612');
+    calls++;
+    return new Response(body);
+  }).schoolDays;
+  const published = await schoolDays();
+  assert.equal(published.published, true);
+  assert.ok(published.data.includes('2026-11-23'));
+  assert.ok(!published.data.includes('2026-11-20'));
+  now += 60_001;
+  body = [
+    'BEGIN:VCALENDAR', 'VERSION:2.0',
+    'BEGIN:VEVENT', 'SUMMARY:Professional Activity Day (Elementary and Sec', ' ondary PA Day)',
+    'DTSTART;VALUE=DATE:20270624', 'DTEND;VALUE=DATE:20270626', 'END:VEVENT',
+    'BEGIN:VEVENT', 'SUMMARY:PA Day (Secondary)', 'DTSTART;TZID=America/Toronto:20270624T000000', 'END:VEVENT',
+    'BEGIN:VEVENT', 'SUMMARY:PA Day (Elementary K-8)', 'DTSTART;VALUE=DATE:20270604', 'END:VEVENT',
+    'BEGIN:VEVENT', 'SUMMARY:PA Day (Secondary)', 'DTSTART;VALUE=DATE:20270611', 'STATUS:CANCELLED', 'END:VEVENT',
+    'BEGIN:VEVENT', 'SUMMARY:Exams (Secondary)', 'DTSTART;VALUE=DATE:20270617', 'END:VEVENT',
+    'END:VCALENDAR', '',
+  ].join('\r\n');
+  const live = await schoolDays();
+  assert.deepEqual(live, { data: ['2027-06-24', '2027-06-25'], fetchedAt: now, published: false, stale: false });
+  assert.deepEqual(await schoolDays(), live);
+  assert.equal(calls, 2);
+  now += 6 * 60 * 60_000;
+  body = 'BEGIN:VCALENDAR\nBEGIN:VEVENT';
+  assert.deepEqual(await schoolDays(), { ...live, stale: true });
+  now += 60_001;
+  body = 'BEGIN:VCALENDAR\nVERSION:2.0\nEND:VCALENDAR';
+  assert.deepEqual(await schoolDays(), { data: [], fetchedAt: now, published: false, stale: false });
+});
+
 test('HTTP contract shares data, rejects cross-origin writes and supports recovery checks', async t => {
   const { dir, db, config } = await fixture(t);
   await writeFile(join(dir, 'index.html'), '<title>Calendar</title>');

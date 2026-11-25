@@ -36,6 +36,12 @@ test('@service Toronto calendar shares events between desktop and frame layouts'
       await page.goto(origin);
       await expect(page.locator('.mo-cell.is-today')).toHaveCount(1);
       await expect(page.locator('.cal-clock')).toContainText('12:01');
+      const paDay = page.locator('.mo-cell').filter({ has: page.locator('.school-pa-marker') });
+      await expect(paDay).toHaveCount(1);
+      await expect(paDay.locator('.num')).toHaveText('23');
+      await paDay.click();
+      await expect(page.getByText('No school for students')).toBeVisible();
+      await page.getByRole('button', { name: 'Close', exact: true }).click();
     }
     await expect(first.locator('html')).toHaveClass('desktop');
     await expect(second.locator('html')).not.toHaveClass('desktop');
