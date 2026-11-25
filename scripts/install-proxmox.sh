@@ -35,7 +35,9 @@ install_homehq() (
     ct=$resume
     existing=$(pct config "$ct")
     grep -qx 'unprivileged: 1' <<< "$existing"
-    grep -qx "description: homehq-installer-$ref" <<< "$existing" ||
+    # pct config encodes the newline Proxmox adds to description comments.
+    marker="description: homehq-installer-$ref"
+    grep -Fxq -e "$marker" -e "$marker%0A" <<< "$existing" ||
       { echo "Container is not marked as created by this installer revision."; exit 1; }
     address=$(sed -n 's/^net0: .*ip=\([0-9.]*\)\/.*/\1/p' <<< "$existing")
     [[ -n $address ]]
