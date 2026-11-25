@@ -25,6 +25,8 @@ To enable collection, include `waste` with `placeId` and numeric `serviceId`. If
 
 ## Maintain the service
 
+To serve the dashboard through Caddy, point `reverse_proxy` to the container's private IP and port and retain the original Host and Origin headers. Home HQ accepts any hostname and event writes require a matching HTTP or HTTPS origin.
+
 - The installer sets the Proxmox console mode to **Shell**. Open **Console** as a Proxmox user with console permissions to get a root shell in the unprivileged container without a guest login. For an existing Home HQ container, apply the same setting from the host with `pct set CTID --cmode shell`.
 - `update --check` reports the installed and newest stable service releases. `update` displays the release notes and prompts before applying. `update --yes` performs an explicit update without prompting.
 - `homehq-service doctor` checks readiness, SQLite integrity, and recent service logs. If a failed or interrupted upgrade leaves the service in maintenance, run `homehq-service rollback`. It restores the pre-activation database only while writes are still suspended. After activation it tests the previous release against a copy of the current database and keeps newer events. An incompatible older schema is refused.

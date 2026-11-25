@@ -1,5 +1,9 @@
 # Calendar service changelog
 
+## 1.0.4
+
+- Allow access through any hostname, including Caddy reverse proxies.
+
 ## 1.0.3
 
 - Finish setting up Home HQ when the Proxmox guest command environment omits `/usr/local/bin`.
