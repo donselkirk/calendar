@@ -91,6 +91,7 @@ export function makeServer({ config, db, root, port = config.port, host = config
       if (path === '/api/v1/time' && read) return json(res, 200, { epoch: Date.now() });
       if (path === '/api/v1/weather' && read) return json(res, 200, await upstream.weather());
       if (path === '/api/v1/waste' && read) return json(res, 200, await upstream.waste());
+      if (path === '/api/v1/school-days' && read) return json(res, 200, await upstream.schoolDays());
       if (path === '/api/v1/holidays' && read) {
         const year = Number(url.searchParams.get('year'));
         if (!Number.isInteger(year) || year < 1900 || year > 2200) throw new InputError(400, 'Invalid year');

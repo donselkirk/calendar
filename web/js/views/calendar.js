@@ -175,6 +175,7 @@ import { TorontoDate, wallTime } from '../toronto.js';
       var d = App.addDays(start, i);
       var evs = App.allDayOn(d).concat(App.timedOn(d));
       var waste = App.wasteOn(d);
+      var schoolPaDay = App.schoolPaDayOn(d);
       var holidays = App.holidaysOn(d);
       var items = evs.slice(0, 3).map(function (e) {
         return '<button class="mo-event" data-ev="' + e.id + '" style="' + App.pstyle(App.evColor(e)) + '"><i></i><span>' +
@@ -183,8 +184,10 @@ import { TorontoDate, wallTime } from '../toronto.js';
       cells += '<div class="mo-cell' + (d.getMonth() !== first.getMonth() ? ' is-out' : '') + (App.sameDay(d, now) ? ' is-today' : '') + '" data-day="' + (+d) + '"' +
         (window.HOMEHQ_SERVICE && !window.HOMEHQ_FRAME ? ' tabindex="0" aria-label="' + App.fmt.month(d) + ' ' + d.getDate() + '"' : '') + '>' +
         '<span class="num">' + d.getDate() + '</span>' +
-        (waste.length ? '<div class="waste-markers"' + (App.wasteStale && App.wasteStale() ?
-          ' title="Showing the last saved collection schedule"' : '') + '>' + waste.map(App.wasteIcon).join('') + '</div>' : '') +
+        (waste.length || schoolPaDay ? '<div class="waste-markers"' + (waste.length && App.wasteStale && App.wasteStale() ?
+          ' title="Showing the last saved collection schedule"' : '') + '>' +
+          (schoolPaDay ? '<span class="school-pa-marker" role="img" aria-label="School PA day" title="School PA day">' +
+            App.icon('calendar', 20) + '</span>' : '') + waste.map(App.wasteIcon).join('') + '</div>' : '') +
         (holidays.length ? '<div class="mo-holiday" title="Ontario public holiday">' + App.holidayIcon() + '<span>' + App.esc(holidays[0].name) + '</span></div>' : '') +
         '<div class="mo-events">' + items +
         (evs.length > 3 ? '<button class="mo-more" data-day="' + (+d) + '">+' + (evs.length - 3) + ' more</button>' : '') + '</div></div>';
@@ -385,13 +388,17 @@ import { TorontoDate, wallTime } from '../toronto.js';
   function daySheet(day) {
     var list = App.allDayOn(day).concat(App.timedOn(day));
     var waste = App.wasteOn(day);
+    var schoolPaDay = App.schoolPaDayOn(day);
     var holidays = App.holidaysOn(day);
-    var heading = list.length ? list.length + ' event' + (list.length === 1 ? '' : 's') : (holidays.length ? 'Ontario public holiday' : (waste.length ? 'Collection day' : 'Nothing scheduled'));
+    var heading = list.length ? list.length + ' event' + (list.length === 1 ? '' : 's') :
+      (holidays.length ? 'Ontario public holiday' : (schoolPaDay ? 'School PA day' : (waste.length ? 'Collection day' : 'Nothing scheduled')));
     App.sheet('<div class="sheet-pad"><div class="label">' + App.fmt.day(day) + ' · ' + App.fmt.month(day) + ' ' + day.getDate() + '</div>' +
       '<h2 class="serif sheet-h">' + heading + '</h2>' +
       (holidays.length ? '<div class="holiday-list">' + holidays.map(function (holiday) {
         return '<div class="holiday-row">' + App.holidayIcon() + '<b>' + App.esc(holiday.name) + '</b><span>Ontario public holiday</span></div>';
       }).join('') + '</div>' : '') +
+      (schoolPaDay ? '<div class="waste-list"><div class="waste-row"><span class="school-pa-marker">' +
+        App.icon('calendar', 20) + '</span><b>No school for students</b><span>' + App.schoolPaDaySource() + '</span></div></div>' : '') +
       (waste.length ? '<div class="waste-list"><div class="label">Ottawa collection</div>' + waste.map(function (item) {
         return '<div class="waste-row">' + App.wasteIcon(item) + '<b>' + App.esc(item.label) + '</b><span>Official city schedule</span></div>';
       }).join('') + '</div>' : '') +
@@ -639,6 +646,7 @@ import { TorontoDate, wallTime } from '../toronto.js';
   });
   App.on('weather', function () { if (V.el) render(); });
   App.on('waste', function () { if (V.el) render(); });
+  App.on('school-days', function () { if (V.el && V.page === 'calendar') render(); });
   App.on('data', function () {
     if (window.HOMEHQ_SERVICE && V.el && V.page === 'calendar') render();
   });

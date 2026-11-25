@@ -1,5 +1,9 @@
 # Calendar service changelog
 
+## 1.1.0
+
+- Show OCDSB secondary PA days beside collection markers. Refresh the school calendar automatically and use the published 2026–27 dates when the feed is unavailable and no saved copy exists.
+
 ## 1.0.4
 
 - Allow access through any hostname, including Caddy reverse proxies.

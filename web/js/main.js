@@ -44,6 +44,7 @@ async function boot() {
   await import('./holidays.js');
   await import('./weather.js');
   await import('./waste.js');
+  await import('./school-days.js');
   await import('./updates.js');
   await import('./views/calendar.js');
   window.App.start();
