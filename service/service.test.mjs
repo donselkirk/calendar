@@ -44,7 +44,6 @@ test('weather cache refreshes at Toronto midnight even before its normal expiry'
 
 test('HTTP contract shares data, rejects cross-origin writes and supports recovery checks', async t => {
   const { dir, db, config } = await fixture(t);
-  config.proxyOrigins = ['https://calendar.example.test'];
   await writeFile(join(dir, 'index.html'), '<title>Calendar</title>');
   await writeFile(join(dir, 'forecast.mp4'), '123456');
   let valid = true;
@@ -66,7 +65,7 @@ test('HTTP contract shares data, rejects cross-origin writes and supports recove
       resolve(reply.statusCode);
     }).on('error', reject);
   });
-  assert.equal(wrongHost, 403);
+  assert.equal(wrongHost, 200);
   const proxyWrite = proxyOrigin => new Promise((resolve, reject) => {
     const request = httpRequest(origin + list, { method: 'POST', headers: { ...headers,
       Host: 'calendar.example.test', Origin: proxyOrigin } }, reply => {
@@ -77,6 +76,7 @@ test('HTTP contract shares data, rejects cross-origin writes and supports recove
     request.end('{');
   });
   assert.equal(await proxyWrite('https://calendar.example.test'), 400);
+  assert.equal(await proxyWrite('http://calendar.example.test'), 400);
   assert.equal(await proxyWrite('https://evil.example.test'), 403);
   assert.equal((await send(list, { method: 'POST', headers: { ...headers, Origin: 'http://untrusted.invalid' },
     body: JSON.stringify(sample) })).status, 403);

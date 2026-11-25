@@ -2,7 +2,7 @@
 
 ## 1.0.4
 
-- Allow configured Caddy proxy origins to access and edit the calendar.
+- Allow access through any hostname, including Caddy reverse proxies.
 
 ## 1.0.3
 
