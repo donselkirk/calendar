@@ -15,7 +15,8 @@ ask() {
 
 install_homehq() (
   set -euo pipefail
-  umask 077
+  # Proxmox writes guest resolver files using the calling process's umask.
+  umask 022
 
   ref=
   plan=0
@@ -35,7 +36,9 @@ install_homehq() (
     ct=$resume
     existing=$(pct config "$ct")
     grep -qx 'unprivileged: 1' <<< "$existing"
-    grep -qx "description: homehq-installer-$ref" <<< "$existing" ||
+    # pct config encodes the newline Proxmox adds to description comments.
+    marker="description: homehq-installer-$ref"
+    grep -Fxq -e "$marker" -e "$marker%0A" <<< "$existing" ||
       { echo "Container is not marked as created by this installer revision."; exit 1; }
     address=$(sed -n 's/^net0: .*ip=\([0-9.]*\)\/.*/\1/p' <<< "$existing")
     [[ -n $address ]]
@@ -96,6 +99,7 @@ PY
       "$templates" "$bridge" "$addr" "$gateway"
     printf 'Calendar access: any client that can reach http://%s:8080/\n' "$address"
     printf 'DNS %s · VLAN %s\n' "${dns:-host default}" "${vlan:-untagged}"
+    printf 'Proxmox Console opens a shell without a guest login.\n'
     if ((plan)); then exit 0; fi
     answer=$(ask 'Create this container? (y/N)' N)
     [[ $answer =~ ^[yY]$ ]] || exit 0
@@ -115,7 +119,7 @@ PY
     [[ -z $dns ]] || extra+=(--nameserver "$dns")
     pct create "$ct" "$templates:vztmpl/$template" --hostname "$hostname_value" --unprivileged 1 \
       --cores "$cpu" --memory "$ram" --swap 256 --rootfs "$disk:$disk_size" --net0 "$net" \
-      --onboot 1 --tags homehq --description "homehq-installer-$ref" "${extra[@]}"
+      --onboot 1 --cmode shell --tags homehq --description "homehq-installer-$ref" "${extra[@]}"
     step='starting the container'
     pct start "$ct"
   fi

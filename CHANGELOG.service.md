@@ -1,5 +1,11 @@
 # Calendar service changelog
 
+## 1.0.2
+
+- Open the Proxmox Console directly to a shell for new Home HQ containers, with access governed by Proxmox permissions.
+- Resume setup on containers whose installer marker includes an encoded newline in the Proxmox configuration.
+- Keep Proxmox-generated DNS configuration readable by guest package downloads and stop setup when Debian's package indexes cannot be refreshed.
+
 ## 1.0.1
 
 - Create new Home HQ containers with open LAN access, without an allowed-clients prompt or a Proxmox datacenter firewall prerequisite.

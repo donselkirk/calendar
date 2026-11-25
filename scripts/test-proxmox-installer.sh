@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+umask 077
 cd "$(dirname "$0")/.."
 source scripts/install-proxmox.sh
 
@@ -38,9 +39,10 @@ pveam() {
 pct() {
   printf 'pct %s\n' "$*" >> "$fixture/calls"
   case $1 in
-    create|start|exec|push) : ;;
+    create|start) [[ $(umask) = 0022 ]] ;;
+    exec|push) : ;;
     config)
-      printf 'unprivileged: 1\ndescription: homehq-installer-%s\n' "$commit"
+      printf 'unprivileged: 1\ndescription: %s\n' "$description"
       printf 'net0: name=eth0,bridge=vmbr0,ip=10.0.0.10/24,gw=10.0.0.1,firewall=0\n'
       ;;
     status) printf 'status: running\n' ;;
@@ -53,21 +55,30 @@ systemctl() { printf 'Unexpected firewall management\n' >&2; return 1; }
 mode_fixture=Default
 install_homehq --ref "$commit" --plan > "$fixture/plan"
 grep -Fq 'Calendar access: any client that can reach http://10.0.0.10:8080/' "$fixture/plan"
+grep -Fq 'Proxmox Console opens a shell without a guest login.' "$fixture/plan"
 [[ ! -e $fixture/calls ]]
 
 install_homehq --ref "$commit" > "$fixture/install"
-grep -Eq '^pct create 105 .*--net0 name=eth0,bridge=vmbr0,ip=10\.0\.0\.10/24,gw=10\.0\.0\.1,firewall=0 --onboot 1 --tags homehq' "$fixture/calls"
+grep -Eq '^pct create 105 .*--net0 name=eth0,bridge=vmbr0,ip=10\.0\.0\.10/24,gw=10\.0\.0\.1,firewall=0 --onboot 1 --cmode shell --tags homehq' "$fixture/calls"
 grep -Fxq 'pct exec 105 -- bash /root/homehq-installer/install-guest.sh 10.0.0.10' "$fixture/calls"
 grep -Fq 'Home HQ is ready at http://10.0.0.10:8080/ (CT 105).' "$fixture/install"
 
 mode_fixture=Advanced
 : > "$fixture/calls"
 install_homehq --ref "$commit" > "$fixture/install"
-grep -Eq '^pct create 105 .*firewall=0,tag=25 .*--nameserver 10\.0\.0\.2$' "$fixture/calls"
+grep -Eq '^pct create 105 .*firewall=0,tag=25 .*--cmode shell .*--nameserver 10\.0\.0\.2$' "$fixture/calls"
 
+for description in "homehq-installer-$commit" "homehq-installer-$commit%0A"; do
+  : > "$fixture/calls"
+  install_homehq --ref "$commit" --resume 105 > "$fixture/install"
+  grep -Fxq 'pct config 105' "$fixture/calls"
+  grep -Fxq 'pct exec 105 -- bash /root/homehq-installer/install-guest.sh 10.0.0.10' "$fixture/calls"
+  if grep -Eq '^pct (create|start|set) ' "$fixture/calls"; then exit 1; fi
+done
+
+description="homehq-installer-$commit%0Aedited"
 : > "$fixture/calls"
-install_homehq --ref "$commit" --resume 105 > "$fixture/install"
-grep -Fxq 'pct config 105' "$fixture/calls"
-grep -Fxq 'pct exec 105 -- bash /root/homehq-installer/install-guest.sh 10.0.0.10' "$fixture/calls"
-if grep -Eq '^pct (create|start|set) ' "$fixture/calls"; then exit 1; fi
+if install_homehq --ref "$commit" --resume 105 > "$fixture/install"; then exit 1; fi
+grep -Fxq 'Container is not marked as created by this installer revision.' "$fixture/install"
+[[ $(cat "$fixture/calls") = 'pct config 105' ]]
 printf 'Proxmox installer tests passed.\n'

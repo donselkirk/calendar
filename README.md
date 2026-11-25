@@ -10,7 +10,7 @@ The default is an unprivileged Debian 13 amd64 LXC with 1 CPU, 1 GiB RAM and a 4
 
 ## Maintain the LXC
 
-Run `update` in the **LXC console**, or run `update --check` to check without applying anything. From the Proxmox host, use `pct exec CTID -- /usr/local/bin/update --check`. See the [deployment runbook](docs/deployment.md) for setup, backups, recovery, and the one-time transfer of existing events.
+Select the container in Proxmox and open **Console** to get a shell without a separate guest login. Run `update` or use `update --check` to check without applying anything. From the Proxmox host, use `pct exec CTID -- /usr/local/bin/update --check`. See the [deployment runbook](docs/deployment.md) for setup, backups, recovery, and the one-time transfer of existing events.
 
 ## Develop
 

@@ -8,7 +8,7 @@ here=$(dirname "$(realpath "$0")")
 . /etc/os-release
 [[ $ID = debian && $VERSION_ID = 13 ]] || { echo "Home HQ requires a Debian 13 guest."; exit 1; }
 export DEBIAN_FRONTEND=noninteractive
-apt-get update
+apt-get --error-on=any update
 apt-get install -y ca-certificates curl git python3 sqlite3
 getent passwd homehq >/dev/null || useradd --system --user-group --home-dir /var/lib/homehq --shell /usr/sbin/nologin homehq
 install -d -m 0750 -g homehq /opt/homehq /etc/homehq
