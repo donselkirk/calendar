@@ -266,6 +266,7 @@
 .mo-cell.is-out { opacity: .35; }
 .mo-cell.is-today { background: #dcefea; color: #153f39; box-shadow: inset 0 0 0 2px #55a895; }
 .mo-events { display: flex; flex-direction: column; gap: 2px; min-height: 0; }
+.mo-event-dots { display: none; }
 .mo-event { display: flex; align-items: center; gap: 5px; min-width: 0; font-size: 12px; line-height: 1.15; text-align: left; }
 .mo-event i { width: 7px; height: 7px; flex: none; border-radius: 50%; background: var(--c); }
 .mo-event span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

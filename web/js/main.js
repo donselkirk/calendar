@@ -34,9 +34,20 @@ async function boot() {
       var status = await fetch('/__device/v1/status', { cache: 'no-store' });
       window.HOMEHQ_FRAME = status.ok && (await status.json()).kioskProtocol === 1;
     } catch (_err) { window.HOMEHQ_FRAME = false; }
-    if (!window.HOMEHQ_FRAME) {
-      document.documentElement.classList.add('desktop');
-      document.querySelector('meta[name=viewport]').setAttribute('content', 'width=device-width, initial-scale=1');
+  }
+  if (window.HOMEHQ_FRAME) {
+    document.querySelector('meta[name=viewport]').setAttribute('content', 'width=1280, initial-scale=1, user-scalable=no');
+  } else {
+    document.documentElement.classList.add('desktop');
+    var viewport = window.visualViewport;
+    if (viewport) {
+      function syncViewport() {
+        document.documentElement.style.setProperty('--visible-height', viewport.height + 'px');
+        document.documentElement.style.setProperty('--visible-top', viewport.offsetTop + 'px');
+      }
+      viewport.addEventListener('resize', syncViewport);
+      viewport.addEventListener('scroll', syncViewport);
+      syncViewport();
     }
   }
   await import('./app.js');
