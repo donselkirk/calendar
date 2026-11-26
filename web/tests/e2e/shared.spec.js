@@ -89,3 +89,60 @@ test('@service Toronto calendar shares events between desktop and frame layouts'
     db.close();
   }
 });
+
+test('@service phone browsers can navigate, view forecasts and add timed calendar events', async ({ browser }) => {
+  const config = readConfig('/nonexistent-homehq-config.json');
+  const db = openDatabase(':memory:', true);
+  const server = makeServer({ config, db, port: 0, root: resolve('dist'), version: 'test',
+    request: async () => globalThis.Response.json({
+      current: { temperature_2m: 4, apparent_temperature: 1, weather_code: 3, is_day: 1 },
+      daily: { time: ['2026-11-24'], temperature_2m_max: [5], temperature_2m_min: [1], precipitation_probability_max: [20] },
+    }) });
+  server.listen(0, config.host);
+  await once(server, 'listening');
+  const phone = await browser.newContext({ viewport: { width: 320, height: 568 }, isMobile: true, hasTouch: true });
+  try {
+    const page = await phone.newPage();
+    await page.addInitScript(() => { Date.now = () => 1795496460000; });
+    await page.goto('http://127.0.0.1:' + server.address().port);
+    const fitsScreen = () => page.evaluate(() =>
+      document.documentElement.scrollWidth === document.documentElement.clientWidth);
+    await expect(page.locator('.mo-grid')).toBeVisible();
+    expect(await fitsScreen()).toBe(true);
+    await page.getByRole('button', { name: 'Next month' }).tap();
+    await expect(page.locator('.cal-title')).toHaveText('December');
+    await page.getByRole('button', { name: 'Today', exact: true }).tap();
+    await expect(page.locator('.cal-title')).toHaveText('November');
+    await page.getByRole('button', { name: 'Open Ottawa forecast' }).tap();
+    await expect(page.locator('.forecast-now')).toHaveText('4°');
+    expect(await fitsScreen()).toBe(true);
+    await page.locator('.forecast-day').last().scrollIntoViewIfNeeded();
+    await expect(page.locator('.forecast-day').last()).toBeInViewport();
+    await page.getByRole('button', { name: 'Calendar', exact: true }).tap();
+
+    const today = page.locator('.mo-cell.is-today');
+    await today.tap();
+    await page.getByRole('button', { name: 'Add event', exact: true }).tap();
+    await page.locator('[data-f=title]').fill('Phone appointment');
+    await page.getByRole('button', { name: 'Set a time' }).tap();
+    await page.setViewportSize({ width: 320, height: 340 });
+    const sheet = page.locator('.sheet');
+    await expect(sheet).toBeInViewport();
+    expect(await sheet.evaluate(element => element.scrollWidth === element.clientWidth)).toBe(true);
+    await page.getByRole('button', { name: 'Move time forward 30 minutes' }).tap();
+    await page.getByRole('button', { name: 'Add to calendar' }).tap();
+    await expect(today.locator('.mo-event-dots i')).toHaveCount(1);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await today.tap();
+    await page.getByRole('button', { name: /Phone appointment/ }).tap();
+    await expect(page.getByRole('heading', { name: 'Phone appointment' })).toBeInViewport();
+    expect(await fitsScreen()).toBe(true);
+    await page.setViewportSize({ width: 932, height: 430 });
+    await expect(page.getByRole('button', { name: 'Close', exact: true })).toBeInViewport();
+    expect(await fitsScreen()).toBe(true);
+  } finally {
+    await phone.close();
+    await new Promise(resolveClose => server.close(resolveClose));
+    db.close();
+  }
+});

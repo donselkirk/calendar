@@ -181,6 +181,9 @@ import { TorontoDate, wallTime } from '../toronto.js';
         return '<button class="mo-event" data-ev="' + e.id + '" style="' + App.pstyle(App.evColor(e)) + '"><i></i><span>' +
           (e.allDay ? '' : '<b>' + App.fmt.time(e.start, false) + '</b> ') + App.esc(e.title) + '</span></button>';
       }).join('');
+      var dots = evs.slice(0, 3).map(function (e) {
+        return '<i style="' + App.pstyle(App.evColor(e)) + '"></i>';
+      }).join('');
       cells += '<div class="mo-cell' + (d.getMonth() !== first.getMonth() ? ' is-out' : '') + (App.sameDay(d, now) ? ' is-today' : '') + '" data-day="' + (+d) + '"' +
         (window.HOMEHQ_SERVICE && !window.HOMEHQ_FRAME ? ' tabindex="0" aria-label="' + App.fmt.month(d) + ' ' + d.getDate() + '"' : '') + '>' +
         '<span class="num">' + d.getDate() + '</span>' +
@@ -190,7 +193,8 @@ import { TorontoDate, wallTime } from '../toronto.js';
             App.icon('calendar', 20) + '</span>' : '') + waste.map(App.wasteIcon).join('') + '</div>' : '') +
         (holidays.length ? '<div class="mo-holiday" title="Ontario public holiday">' + App.holidayIcon() + '<span>' + App.esc(holidays[0].name) + '</span></div>' : '') +
         '<div class="mo-events">' + items +
-        (evs.length > 3 ? '<button class="mo-more" data-day="' + (+d) + '">+' + (evs.length - 3) + ' more</button>' : '') + '</div></div>';
+        (evs.length > 3 ? '<button class="mo-more" data-day="' + (+d) + '">+' + (evs.length - 3) + ' more</button>' : '') + '</div>' +
+        (dots ? '<div class="mo-event-dots" aria-hidden="true">' + dots + (evs.length > 3 ? '<span>+</span>' : '') + '</div>' : '') + '</div>';
     }
     return '<div class="month"><div class="mo-dow">' + ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(function (d) { return '<span class="label">' + d + '</span>'; }).join('') + '</div>' +
       '<div class="mo-grid">' + cells + '</div></div>';
